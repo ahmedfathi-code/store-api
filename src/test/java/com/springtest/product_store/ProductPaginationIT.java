@@ -166,6 +166,20 @@ class ProductPaginationIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void unknownDirectionIsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/products").param("sortBy", "price").param("direction", "dsc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("direction must be 'asc' or 'desc'"));
+    }
+
+    @Test
+    void directionIsCaseInsensitive() throws Exception {
+        mockMvc.perform(get("/api/products").param("sortBy", "price").param("direction", "DESC").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].price").value(contains(25.0, 24.0)));
+    }
+
+    @Test
     void searchValidatesPaging() throws Exception {
         mockMvc.perform(get("/api/products/search/name").param("name", "x").param("size", "0"))
                 .andExpect(status().isBadRequest());
