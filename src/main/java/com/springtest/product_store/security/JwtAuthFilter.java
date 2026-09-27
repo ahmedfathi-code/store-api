@@ -6,6 +6,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -23,6 +26,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
+
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -42,8 +48,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // ✅ بنشيل الـ Token من بعد كلمة "Bearer "
         String token = authHeader.substring(7);
 
+        // Revoked (logged-out) tokens are treated like invalid ones.
+        // If Redis is unreachable we fail closed: a revoked token must never work again.
+        boolean revoked;
+        try {
+            revoked = tokenBlacklistService.isBlacklisted(token);
+        } catch (DataAccessException e) {
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.getWriter().write("{\"status\":503,\"message\":\"Authentication service unavailable\",\"timestamp\":\""
+                    + LocalDateTime.now() + "\"}");
+            return;
+        }
+
         // ✅ بنتحقق من الـ Token ونجيب الإيميل منه
-        if (jwtUtil.isTokenValid(token)) {
+        if (!revoked && jwtUtil.isTokenValid(token)) {
             String email = jwtUtil.extractEmail(token);
 
             UserDetails userDetails = userDetailsService.loadUserByUsername(email);
