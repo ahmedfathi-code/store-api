@@ -10,9 +10,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -38,12 +35,7 @@ public class ProductController {
             @RequestParam(defaultValue = "10")   @Min(value = 1, message = "size must be 1 or greater") int size,
             @RequestParam(defaultValue = "id")   String sortBy,
             @RequestParam(defaultValue = "asc")  String direction) {
-        Sort sort = direction.equalsIgnoreCase("desc")
-                ? Sort.by(sortBy).descending()
-                : Sort.by(sortBy).ascending();
-
-        Pageable pageable = PageRequest.of(page, size, sort);
-        return ResponseEntity.ok(productService.findAll(pageable));
+        return ResponseEntity.ok(productService.getAllProducts(page, size, sortBy, direction));
     }
 
     // ✅ Get By ID
