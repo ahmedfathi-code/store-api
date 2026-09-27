@@ -96,6 +96,19 @@ class ProductSecurityIT extends AbstractIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    // Non-numeric ids used to surface as 500
+    @Test
+    void nonNumericIdIsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/products/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value for parameter 'id'"));
+        mockMvc.perform(put("/api/products/abc").header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(delete("/api/products/abc").header("Authorization", bearer(admin)))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void adminGetsBadRequestForInvalidBody() throws Exception {
         mockMvc.perform(post("/api/products").header("Authorization", bearer(admin))
