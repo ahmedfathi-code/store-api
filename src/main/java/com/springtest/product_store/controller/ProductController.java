@@ -8,6 +8,7 @@ import com.springtest.product_store.entity.Product;
 import com.springtest.product_store.service.ProductService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -34,7 +35,8 @@ public class ProductController {
             @RequestParam(defaultValue = "0")    @Min(value = 0, message = "page must be 0 or greater") int page,
             @RequestParam(defaultValue = "10")   @Min(value = 1, message = "size must be 1 or greater") int size,
             @RequestParam(defaultValue = "id")   String sortBy,
-            @RequestParam(defaultValue = "asc")  String direction) {
+            @RequestParam(defaultValue = "asc")  @Pattern(regexp = "asc|desc", flags = Pattern.Flag.CASE_INSENSITIVE,
+                    message = "direction must be 'asc' or 'desc'") String direction) {
         return ResponseEntity.ok(productService.getAllProducts(page, size, sortBy, direction));
     }
 

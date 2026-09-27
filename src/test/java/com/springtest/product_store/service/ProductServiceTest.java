@@ -94,17 +94,6 @@ class ProductServiceTest {
     }
 
     @Test
-    void getAllProductsTreatsUnknownDirectionAsAscending() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
-
-        productService.getAllProducts(0, 10, "price", "sideways");
-
-        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(pageable.capture());
-        assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by("price").ascending());
-    }
-
-    @Test
     void getAllProductsKeepsPageMetadataAndMapsToDtos() {
         Pageable pageable = PageRequest.of(1, 2, Sort.by("id").ascending());
         Page<Product> page = new PageImpl<>(
