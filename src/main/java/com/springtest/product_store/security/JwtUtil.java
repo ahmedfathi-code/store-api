@@ -7,6 +7,7 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.security.Key;
+import java.time.Duration;
 import java.util.Date;
 
 @Component
@@ -16,8 +17,13 @@ public class  JwtUtil {
     @Value("${jwt.secret}")
     private String SECRET;
 
-    // مدة صلاحية الـ Token = 24 ساعة
-    private final long EXPIRATION = 1000 * 60 * 60 * 24;
+    // Access-token lifetime (default 15m); clients renew via /api/auth/refresh
+    @Value("${jwt.access-token-expiration}")
+    private Duration EXPIRATION;
+
+    public Duration getAccessTokenValidity() {
+        return EXPIRATION;
+    }
 
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(SECRET.getBytes());
@@ -28,7 +34,7 @@ public class  JwtUtil {
         return Jwts.builder()
                 .setSubject(email)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
+                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION.toMillis()))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
@@ -41,6 +47,18 @@ public class  JwtUtil {
                 .parseClaimsJws(token)
                 .getBody()
                 .getSubject();
+    }
+
+    // Time left until the token expires (zero if already expired)
+    public Duration getRemainingValidity(String token) {
+        Date expiration = Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .getExpiration();
+        long millis = expiration.getTime() - System.currentTimeMillis();
+        return Duration.ofMillis(Math.max(0, millis));
     }
 
     // ✅ بيتحقق إن الـ Token صحيح وماشيش
