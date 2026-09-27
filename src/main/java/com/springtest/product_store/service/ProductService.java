@@ -28,12 +28,13 @@ public class ProductService {
 
     }
 
-    public Page<Product>  getAllProducts(int page , int size , String sortBy , String direction) {
+    // Used by GET /api/products: builds the page request and maps to DTOs
+    public Page<ProductResponseDto> getAllProducts(int page , int size , String sortBy , String direction) {
         Sort sort = direction.equalsIgnoreCase("desc")
                 ? Sort.by(sortBy).descending()
                 : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
-        return productRepository.findAll(pageable);
+        return productRepository.findAll(pageable).map(this::toDto);
     }
 
 
@@ -84,11 +85,6 @@ public class ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
         return toDto(product);
-    }
-
-    public Page<ProductResponseDto> findAll(Pageable pageable) {
-        return productRepository.findAll(pageable)
-                .map(this::toDto);
     }
 
 

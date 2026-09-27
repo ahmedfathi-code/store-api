@@ -105,14 +105,14 @@ class ProductServiceTest {
     }
 
     @Test
-    void findAllPassesPageableThroughAndMapsToDtos() {
-        Pageable pageable = PageRequest.of(1, 2, Sort.by("id"));
+    void getAllProductsKeepsPageMetadataAndMapsToDtos() {
+        Pageable pageable = PageRequest.of(1, 2, Sort.by("id").ascending());
         Page<Product> page = new PageImpl<>(
                 List.of(product(3L, "Pen", 2.5, "office", 10), product(4L, "Mug", 7.0, "kitchen", 3)),
                 pageable, 6);
         when(productRepository.findAll(pageable)).thenReturn(page);
 
-        Page<ProductResponseDto> result = productService.findAll(pageable);
+        Page<ProductResponseDto> result = productService.getAllProducts(1, 2, "id", "asc");
 
         assertThat(result.getTotalElements()).isEqualTo(6);
         assertThat(result.getTotalPages()).isEqualTo(3);
