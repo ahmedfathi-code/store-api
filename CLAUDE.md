@@ -9,7 +9,8 @@ response DTOs, centralized exception handling, OpenAPI docs.
 - Before writing code for a milestone, present a short plan (files to touch, approach)
   and wait for approval.
 - Small commits in Conventional Commits style (`feat:`, `fix:`, `test:`, `chore:`, `docs:`).
-- Run `mvn verify` before every commit. Never commit failing code.
+- Run `.\mvnw.cmd verify` before every commit (Maven is not on PATH; use the wrapper).
+  Never commit failing code.
 - When a milestone is done: push the branch and open a PR with `gh pr create`.
 - PR descriptions must include: what changed, why, alternatives considered,
   new dependencies with reasons, and how to test it manually.
