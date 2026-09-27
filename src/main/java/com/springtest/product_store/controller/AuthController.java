@@ -2,13 +2,18 @@ package com.springtest.product_store.controller;
 
 
 import com.springtest.product_store.dto.AuthRequest;
+import com.springtest.product_store.dto.RefreshRequest;
 import com.springtest.product_store.dto.RegisterRequest;
+import com.springtest.product_store.dto.TokenResponse;
 import com.springtest.product_store.entity.User;
 import com.springtest.product_store.model.Role;
 import com.springtest.product_store.repository.UserRepository;
 import com.springtest.product_store.security.JwtUtil;
+import com.springtest.product_store.security.RefreshTokenService;
+import com.springtest.product_store.security.TokenBlacklistService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
@@ -16,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -32,6 +38,12 @@ public class AuthController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
+
+    @Autowired
+    private RefreshTokenService refreshTokenService;
 
     // ✅ Register
     @PostMapping("/register")
@@ -76,8 +88,44 @@ public class AuthController {
         }
 
         // لو صح، نعمل Token ونبعته
-        String token = jwtUtil.generateToken(request.getEmail());
+        return ResponseEntity.ok(issueTokens(request.getEmail()));
+    }
 
-        return ResponseEntity.ok(Map.of("token", token));
+    // Refresh: exchange a refresh token for a new access + refresh token pair.
+    // The old refresh token is consumed (single use), so a leaked one works at most once.
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@Valid @RequestBody RefreshRequest request) {
+        Optional<String> email = refreshTokenService.consume(request.getRefreshToken());
+
+        if (email.isEmpty() || userRepository.findByEmail(email.get()).isEmpty()) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid or expired refresh token"));
+        }
+
+        return ResponseEntity.ok(issueTokens(email.get()));
+    }
+
+    // Logout: revoke the current access token until it would naturally expire,
+    // and the refresh token too if one is sent.
+    // SecurityConfig guarantees a valid, non-revoked Bearer token reaches this point.
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
+                                       @RequestBody(required = false) RefreshRequest request) {
+        String accessToken = authHeader.substring(7);
+        tokenBlacklistService.blacklist(accessToken, jwtUtil.getRemainingValidity(accessToken));
+
+        if (request != null && request.getRefreshToken() != null) {
+            refreshTokenService.revoke(request.getRefreshToken());
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    private TokenResponse issueTokens(String email) {
+        return new TokenResponse(
+                jwtUtil.generateToken(email),
+                refreshTokenService.issue(email),
+                jwtUtil.getAccessTokenValidity().toSeconds()
+        );
     }
 }
