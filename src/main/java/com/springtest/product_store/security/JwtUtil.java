@@ -17,8 +17,13 @@ public class  JwtUtil {
     @Value("${jwt.secret}")
     private String SECRET;
 
-    // مدة صلاحية الـ Token = 24 ساعة
-    private final long EXPIRATION = 1000 * 60 * 60 * 24;
+    // Access-token lifetime (default 15m); clients renew via /api/auth/refresh
+    @Value("${jwt.access-token-expiration}")
+    private Duration EXPIRATION;
+
+    public Duration getAccessTokenValidity() {
+        return EXPIRATION;
+    }
 
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(SECRET.getBytes());
@@ -29,7 +34,7 @@ public class  JwtUtil {
         return Jwts.builder()
                 .setSubject(email)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
+                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION.toMillis()))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
