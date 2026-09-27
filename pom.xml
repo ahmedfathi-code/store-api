@@ -45,6 +45,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Actuator: /actuator/health for container health checks (only endpoint exposed) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Redis: refresh tokens and access-token blacklist -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
