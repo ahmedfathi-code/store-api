@@ -45,6 +45,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Redis: refresh tokens and access-token blacklist -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Flyway: versioned schema migrations -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
