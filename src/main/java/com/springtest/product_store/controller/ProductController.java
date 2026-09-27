@@ -7,6 +7,7 @@ import com.springtest.product_store.dto.ProductResponseDto;
 import com.springtest.product_store.entity.Product;
 import com.springtest.product_store.service.ProductService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +34,8 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<Page<ProductResponseDto>> getAllProducts(
             @RequestParam(defaultValue = "0")    @Min(value = 0, message = "page must be 0 or greater") int page,
-            @RequestParam(defaultValue = "10")   @Min(value = 1, message = "size must be 1 or greater") int size,
+            @RequestParam(defaultValue = "10")   @Min(value = 1, message = "size must be 1 or greater")
+            @Max(value = 100, message = "size must be at most 100") int size,
             @RequestParam(defaultValue = "id")   String sortBy,
             @RequestParam(defaultValue = "asc")  @Pattern(regexp = "asc|desc", flags = Pattern.Flag.CASE_INSENSITIVE,
                     message = "direction must be 'asc' or 'desc'") String direction) {
@@ -51,7 +53,8 @@ public class ProductController {
     public ResponseEntity<Page<Product>> searchByName(
             @RequestParam String name,
             @RequestParam(defaultValue = "0")  @Min(value = 0, message = "page must be 0 or greater") int page,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size must be 1 or greater") int size) {
+            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size must be 1 or greater")
+            @Max(value = 100, message = "size must be at most 100") int size) {
 
         return ResponseEntity.ok(productService.searchByName(name, page, size));
     }
@@ -61,7 +64,8 @@ public class ProductController {
     public ResponseEntity<Page<Product>> searchByCategory(
             @RequestParam String category,
             @RequestParam(defaultValue = "0")  @Min(value = 0, message = "page must be 0 or greater") int page,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size must be 1 or greater") int size) {
+            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size must be 1 or greater")
+            @Max(value = 100, message = "size must be at most 100") int size) {
 
         return ResponseEntity.ok(productService.searchByCategory(category, page, size));
     }

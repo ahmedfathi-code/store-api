@@ -166,6 +166,20 @@ class ProductPaginationIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void sizeIsCappedAt100() throws Exception {
+        mockMvc.perform(get("/api/products").param("size", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(TOTAL)));
+        mockMvc.perform(get("/api/products").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("size must be at most 100"));
+        mockMvc.perform(get("/api/products/search/name").param("name", "x").param("size", "101"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/products/search/category").param("category", "x").param("size", "101"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void unknownDirectionIsBadRequest() throws Exception {
         mockMvc.perform(get("/api/products").param("sortBy", "price").param("direction", "dsc"))
                 .andExpect(status().isBadRequest())
