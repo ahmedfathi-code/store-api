@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -45,7 +46,11 @@ public abstract class AbstractIntegrationTest {
     void resetState() {
         productRepository.deleteAll();
         userRepository.deleteAll();
-        redis.getConnectionFactory().getConnection().serverCommands().flushDb();
+        // execute() opens and releases the connection for us
+        redis.execute((RedisCallback<Void>) connection -> {
+            connection.serverCommands().flushDb();
+            return null;
+        });
     }
 
     // Users are inserted directly: /register can only create ROLE_USER accounts
