@@ -39,7 +39,7 @@ public class ProductService {
 
     public Product getProductById(Long id) {
         return productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("المنتج مش موجود بالـ id ده: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("المنتج مش موجود بالـ id ده: " + id));
     }
 
     // ✅ Search by Name (Pagination)

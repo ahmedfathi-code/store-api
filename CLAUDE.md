@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Spring Boot store API: JWT auth, ADMIN/USER roles, pagination (page/size/sort),
+Spring Boot store API: JWT auth, ADMIN/USER roles, pagination (page/size/sortBy/direction),
 response DTOs, centralized exception handling, OpenAPI docs.
 
 ## Workflow rules
@@ -10,7 +10,8 @@ response DTOs, centralized exception handling, OpenAPI docs.
   and wait for approval.
 - Small commits in Conventional Commits style (`feat:`, `fix:`, `test:`, `chore:`, `docs:`).
 - Run `.\mvnw.cmd verify` before every commit (Maven is not on PATH; use the wrapper).
-  Never commit failing code.
+  Never commit failing code. `verify` runs Testcontainers ITs, so Docker must be running
+  (`-DskipITs` runs unit tests only, but never skip ITs before a commit).
 - When a milestone is done: push the branch and open a PR with `gh pr create`.
 - PR descriptions must include: what changed, why, alternatives considered,
   new dependencies with reasons, and how to test it manually.
@@ -18,5 +19,5 @@ response DTOs, centralized exception handling, OpenAPI docs.
 - Never commit secrets. Use `${ENV_VAR}` placeholders; keep `.env.example` updated.
 - Never run `gh auth` or handle tokens.
 - Do not change existing API contracts (endpoints, request/response DTOs, pagination
-  params `page`/`size`/`sort`, role rules) unless the milestone requires it, and call
+  params `page`/`size`/`sortBy`/`direction`, role rules) unless the milestone requires it, and call
   it out explicitly in the PR.

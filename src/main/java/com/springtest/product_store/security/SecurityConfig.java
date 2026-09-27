@@ -33,6 +33,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         // ✅ GET متاح للكل
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                        // Creating, updating and deleting products is ADMIN-only
+                        .requestMatchers(HttpMethod.POST, "/api/products/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/products/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
                         // ✅ باقي العمليات محتاجة Token
                         .anyRequest().authenticated()
                 )
