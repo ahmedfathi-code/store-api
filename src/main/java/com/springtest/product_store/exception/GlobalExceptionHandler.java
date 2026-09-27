@@ -3,6 +3,8 @@ package com.springtest.product_store.exception;
 
 
 import com.springtest.product_store.dto.ErrorResponse;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -36,6 +38,13 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         return ResponseEntity.status(400)
                 .body(new ErrorResponse(400, msg, LocalDateTime.now().toString()));
+    }
+
+    // Redis (token store) unreachable or timing out: same 503 as JwtAuthFilter returns
+    @ExceptionHandler({RedisConnectionFailureException.class, QueryTimeoutException.class})
+    public ResponseEntity<ErrorResponse> handleTokenStoreUnavailable(RuntimeException ex) {
+        return ResponseEntity.status(503)
+                .body(new ErrorResponse(503, "Authentication service unavailable", LocalDateTime.now().toString()));
     }
 
     @ExceptionHandler(Exception.class)
