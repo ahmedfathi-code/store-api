@@ -3,13 +3,17 @@ package com.springtest.product_store.exception;
 
 
 import com.springtest.product_store.dto.ErrorResponse;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -38,6 +42,33 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         return ResponseEntity.status(400)
                 .body(new ErrorResponse(400, msg, LocalDateTime.now().toString()));
+    }
+
+    // Invalid request params, e.g. page < 0 or size < 1
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleParamValidation(HandlerMethodValidationException ex) {
+        String msg = ex.getAllErrors()
+                .stream()
+                .map(MessageSourceResolvable::getDefaultMessage)
+                .collect(Collectors.joining(", "));
+        return ResponseEntity.status(400)
+                .body(new ErrorResponse(400, msg, LocalDateTime.now().toString()));
+    }
+
+    // Wrong param type, e.g. page=abc
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(400)
+                .body(new ErrorResponse(400, "Invalid value for parameter '" + ex.getName() + "'",
+                        LocalDateTime.now().toString()));
+    }
+
+    // Unknown sort property, e.g. sortBy=foo
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidSort(PropertyReferenceException ex) {
+        return ResponseEntity.status(400)
+                .body(new ErrorResponse(400, "Invalid sort property '" + ex.getPropertyName() + "'",
+                        LocalDateTime.now().toString()));
     }
 
     // Redis (token store) unreachable or timing out: same 503 as JwtAuthFilter returns
