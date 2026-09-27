@@ -27,6 +27,8 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Logout needs the (valid, not yet revoked) access token being revoked
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         // ✅ متاح للكل بدون Token
                         .requestMatchers("/api/auth/**").permitAll()
                         // ✅ GET متاح للكل

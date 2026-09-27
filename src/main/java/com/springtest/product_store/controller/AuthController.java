@@ -7,8 +7,10 @@ import com.springtest.product_store.entity.User;
 import com.springtest.product_store.model.Role;
 import com.springtest.product_store.repository.UserRepository;
 import com.springtest.product_store.security.JwtUtil;
+import com.springtest.product_store.security.TokenBlacklistService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
@@ -32,6 +34,9 @@ public class AuthController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
 
     // ✅ Register
     @PostMapping("/register")
@@ -79,5 +84,14 @@ public class AuthController {
         String token = jwtUtil.generateToken(request.getEmail());
 
         return ResponseEntity.ok(Map.of("token", token));
+    }
+
+    // Logout: revoke the current access token until it would naturally expire.
+    // SecurityConfig guarantees a valid, non-revoked Bearer token reaches this point.
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
+        String accessToken = authHeader.substring(7);
+        tokenBlacklistService.blacklist(accessToken, jwtUtil.getRemainingValidity(accessToken));
+        return ResponseEntity.noContent().build();
     }
 }
