@@ -151,7 +151,8 @@ public class AuthController {
             description = "Revokes the access token until it expires, and the refresh token too if it is sent.")
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @ApiResponse(responseCode = "204", description = "Logged out", content = @Content)
-    @ApiResponse(responseCode = "403", description = "Missing, invalid or already revoked token", content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or already revoked token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Void> logout(@Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
                                        @RequestBody(required = false) RefreshRequest request) {
         String accessToken = authHeader.substring(7);

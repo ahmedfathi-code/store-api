@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -39,7 +40,11 @@ class ProductSecurityIT extends AbstractIntegrationTest {
     void userCannotCreateProduct() throws Exception {
         mockMvc.perform(post("/api/products").header("Authorization", bearer(user))
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                // authenticated, so no auth challenge; just a JSON reason
+                .andExpect(header().doesNotExist("WWW-Authenticate"))
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("Access denied"));
         assertThat(productRepository.count()).isEqualTo(1);
     }
 
@@ -120,24 +125,61 @@ class ProductSecurityIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value(400));
     }
 
-    // --- anonymous and invalid tokens ---
+    // --- anonymous and invalid tokens: 401 (RFC 6750), not 403 ---
 
     @Test
     void anonymousCannotWrite() throws Exception {
         mockMvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Authentication required"));
         mockMvc.perform(put("/api/products/{id}", existing.getId())
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(delete("/api/products/{id}", existing.getId()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void invalidTokenCannotWrite() throws Exception {
         mockMvc.perform(post("/api/products").header("Authorization", "Bearer not.a.jwt")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer error=\"invalid_token\""))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Invalid, expired or revoked token"));
+    }
+
+    @Test
+    void tokenSignedWithAnotherKeyIsRejected() throws Exception {
+        // header.payload of a real-looking JWT with a signature from a different key
+        String forged = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBleGFtcGxlLmNvbSJ9."
+                + "c2lnbmVkLXdpdGgtYW5vdGhlci1rZXktMTIzNDU2Nzg5MDEyMzQ1Njc4OTA";
+        mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + forged)
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer error=\"invalid_token\""));
+        assertThat(productRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void validTokenOfDeletedUserIsRejected() throws Exception {
+        String token = bearer(admin);
+        userRepository.delete(admin);
+
+        mockMvc.perform(post("/api/products").header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer error=\"invalid_token\""));
+    }
+
+    @Test
+    void nonBearerAuthorizationHeaderIsAPlainChallenge() throws Exception {
+        mockMvc.perform(post("/api/products").header("Authorization", "Basic dXNlcjpwYXNz")
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer"));
     }
 
     @Test
