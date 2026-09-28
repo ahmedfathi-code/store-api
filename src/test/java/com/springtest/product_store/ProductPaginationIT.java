@@ -114,7 +114,7 @@ class ProductPaginationIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.content[0].name").value("Product 01"))
                 .andExpect(jsonPath("$.content[0].price").exists())
                 .andExpect(jsonPath("$.content[0].category").value("office"))
-                .andExpect(jsonPath("$.content[0].stock").doesNotExist());
+                .andExpect(jsonPath("$.content[0].stock").value(1));
     }
 
     @Test

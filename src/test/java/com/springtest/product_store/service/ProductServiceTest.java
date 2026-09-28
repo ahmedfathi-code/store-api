@@ -54,9 +54,12 @@ class ProductServiceTest {
 
     @Test
     void createProductMapsRequestFieldsAndSaves() {
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
+            Product toSave = inv.getArgument(0);
+            return new Product(7L, toSave.getName(), toSave.getPrice(), toSave.getCategory(), toSave.getStock());
+        });
 
-        Product created = productService.createProduct(request("Pen", 2.5, "office", 10));
+        ProductResponseDto created = productService.createProduct(request("Pen", 2.5, "office", 10));
 
         ArgumentCaptor<Product> saved = ArgumentCaptor.forClass(Product.class);
         verify(productRepository).save(saved.capture());
@@ -64,7 +67,11 @@ class ProductServiceTest {
         assertThat(saved.getValue())
                 .extracting(Product::getName, Product::getPrice, Product::getCategory, Product::getStock)
                 .containsExactly("Pen", 2.5, "office", 10);
-        assertThat(created).isSameAs(saved.getValue());
+        // the response is the DTO of what was saved, including the generated id
+        assertThat(created)
+                .extracting(ProductResponseDto::getId, ProductResponseDto::getName, ProductResponseDto::getPrice,
+                        ProductResponseDto::getCategory, ProductResponseDto::getStock)
+                .containsExactly(7L, "Pen", 2.5, "office", 10);
     }
 
     // --- pagination and sorting ---
@@ -108,10 +115,10 @@ class ProductServiceTest {
         assertThat(result.getNumber()).isEqualTo(1);
         assertThat(result.getContent())
                 .extracting(ProductResponseDto::getId, ProductResponseDto::getName,
-                        ProductResponseDto::getPrice, ProductResponseDto::getCategory)
+                        ProductResponseDto::getPrice, ProductResponseDto::getCategory, ProductResponseDto::getStock)
                 .containsExactly(
-                        tuple(3L, "Pen", 2.5, "office"),
-                        tuple(4L, "Mug", 7.0, "kitchen"));
+                        tuple(3L, "Pen", 2.5, "office", 10),
+                        tuple(4L, "Mug", 7.0, "kitchen", 3));
     }
 
     @Test
@@ -122,6 +129,16 @@ class ProductServiceTest {
         productService.searchByName("pen", 1, 3);
 
         verify(productRepository).findByNameContainingIgnoreCase("pen", PageRequest.of(1, 3));
+    }
+
+    @Test
+    void searchResultsAreMappedToDtos() {
+        when(productRepository.findByCategoryIgnoreCase("office", PageRequest.of(0, 10)))
+                .thenReturn(new PageImpl<>(List.of(product(5L, "Stapler", 3.0, "office", 8))));
+
+        assertThat(productService.searchByCategory("office", 0, 10).getContent())
+                .extracting(ProductResponseDto::getId, ProductResponseDto::getStock)
+                .containsExactly(tuple(5L, 8));
     }
 
     @Test
@@ -163,10 +180,11 @@ class ProductServiceTest {
         when(productRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(productRepository.save(existing)).thenReturn(existing);
 
-        Product updated = productService.updateProduct(1L, request("Pencil", 1.0, "school", 50));
+        ProductResponseDto updated = productService.updateProduct(1L, request("Pencil", 1.0, "school", 50));
 
         assertThat(updated)
-                .extracting(Product::getId, Product::getName, Product::getPrice, Product::getCategory, Product::getStock)
+                .extracting(ProductResponseDto::getId, ProductResponseDto::getName, ProductResponseDto::getPrice,
+                        ProductResponseDto::getCategory, ProductResponseDto::getStock)
                 .containsExactly(1L, "Pencil", 1.0, "school", 50);
     }
 
