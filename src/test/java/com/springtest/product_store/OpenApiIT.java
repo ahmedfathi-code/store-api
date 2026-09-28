@@ -38,6 +38,39 @@ class OpenApiIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat").value("JWT"));
     }
 
+    // The docs must match SecurityConfig: a lock on exactly the operations that need a token
+    @Test
+    void protectedOperationsRequireBearerAuthAndPublicOnesDoNot() throws Exception {
+        String bearer = ".security[0].bearerAuth";
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/products'].post" + bearer).exists())
+                .andExpect(jsonPath("$.paths['/api/products/{id}'].put" + bearer).exists())
+                .andExpect(jsonPath("$.paths['/api/products/{id}'].delete" + bearer).exists())
+                .andExpect(jsonPath("$.paths['/api/auth/logout'].post" + bearer).exists())
+                .andExpect(jsonPath("$.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/products'].get.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/products/{id}'].get.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/products/search/name'].get.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/products/search/category'].get.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/auth/register'].post.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/auth/login'].post.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.security").doesNotExist());
+    }
+
+    @Test
+    void operationsAreTaggedAndDescribed() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/products'].post.tags[0]").value("products"))
+                .andExpect(jsonPath("$.paths['/api/auth/login'].post.tags[0]").value("auth"))
+                .andExpect(jsonPath("$.paths['/api/products'].post.summary").value("Create a product (ADMIN)"))
+                .andExpect(jsonPath("$.paths['/api/products'].post.responses['403']").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.responses['401']").exists())
+                // logout's Authorization header comes from the bearerAuth scheme, not a parameter
+                .andExpect(jsonPath("$.paths['/api/auth/logout'].post.parameters").doesNotExist());
+    }
+
     @Test
     void paginationLimitsAreDocumented() throws Exception {
         String size = "$.paths['/api/products'].get.parameters[?(@.name == 'size')].schema";
