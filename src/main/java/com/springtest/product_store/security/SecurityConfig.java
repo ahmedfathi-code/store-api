@@ -31,6 +31,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         // ✅ متاح للكل بدون Token
                         .requestMatchers("/api/auth/**").permitAll()
+                        // Health check for Docker/load balancers (the only exposed Actuator endpoint)
+                        .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         // ✅ GET متاح للكل
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         // Creating, updating and deleting products is ADMIN-only

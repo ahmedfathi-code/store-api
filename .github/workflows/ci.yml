@@ -30,3 +30,21 @@ jobs:
 
       - name: Build and test
         run: ./mvnw -B verify
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        env:
+          # Dummy values: only needed so compose can interpolate the file
+          DB_USERNAME: ci
+          DB_PASSWORD: ci
+          JWT_SECRET: ci-only-dummy-secret-at-least-32-characters
+        run: docker compose config --quiet
+
+      - name: Build image
+        run: docker build --tag store-api:ci .
