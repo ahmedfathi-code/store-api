@@ -229,6 +229,9 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or revoked token",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "429", description = "Too many wrong current passwords (5 in 15 minutes by default); "
+            + "see the Retry-After header",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<?> changePassword(@Parameter(hidden = true) @AuthenticationPrincipal UserDetails principal,
@@ -236,9 +239,15 @@ public class AuthController {
         // The filter only authenticates tokens of existing users
         User user = userRepository.findByEmail(principal.getUsername()).orElseThrow();
 
+        // A stolen access token must not become a way to guess the current password
+        List<LoginAttemptService.Limit> limits = loginAttemptService.changePasswordLimits(user.getEmail());
+        loginAttemptService.checkAllowed(limits);
+
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            loginAttemptService.recordFailure(limits);
             return badRequest(message("auth.password.currentIncorrect"));
         }
+        loginAttemptService.reset(limits.get(0));
         int minLength = user.getRole() == Role.ROLE_ADMIN ? ADMIN_MIN_PASSWORD_LENGTH : USER_MIN_PASSWORD_LENGTH;
         if (request.getNewPassword().length() < minLength) {
             // as text: MessageFormat would localise the digits
