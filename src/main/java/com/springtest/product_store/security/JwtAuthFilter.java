@@ -7,16 +7,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
-import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -29,6 +28,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Autowired
     private TokenBlacklistService tokenBlacklistService;
+
+    @Autowired
+    private JsonErrorWriter jsonErrorWriter;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -54,10 +56,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             revoked = tokenBlacklistService.isBlacklisted(token);
         } catch (DataAccessException e) {
-            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write("{\"status\":503,\"message\":\"Authentication service unavailable\",\"timestamp\":\""
-                    + LocalDateTime.now() + "\"}");
+            jsonErrorWriter.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "Authentication service unavailable");
             return;
         }
 
@@ -65,15 +65,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (!revoked && jwtUtil.isTokenValid(token)) {
             String email = jwtUtil.extractEmail(token);
 
-            UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+            try {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
-            // ✅ بنعمل Authentication object ونحطه في الـ SecurityContext
-            UsernamePasswordAuthenticationToken authToken =
-                    new UsernamePasswordAuthenticationToken(
-                            userDetails, null, userDetails.getAuthorities());
+                // ✅ بنعمل Authentication object ونحطه في الـ SecurityContext
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(
+                                userDetails, null, userDetails.getAuthorities());
 
-            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authToken);
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            } catch (UsernameNotFoundException e) {
+                // Valid signature, but the user no longer exists: treat like an invalid token (401)
+            }
         }
 
         filterChain.doFilter(request, response);

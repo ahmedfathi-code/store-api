@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -116,13 +117,15 @@ class AuthTokensIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(refreshBody(tokens.refresh())))
                 .andExpect(status().isNoContent());
 
-        // revoked access token: rejected like an invalid token (403) on an ADMIN endpoint
+        // revoked access token: rejected like an invalid token (401 invalid_token)
         mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + tokens.access())
                         .contentType(MediaType.APPLICATION_JSON).content(PRODUCT))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer error=\"invalid_token\""))
+                .andExpect(jsonPath("$.message").value("Invalid, expired or revoked token"));
         // ...and cannot log out again
         mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + tokens.access()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         // public reads still work
         mockMvc.perform(get("/api/products").header("Authorization", "Bearer " + tokens.access()))
                 .andExpect(status().isOk());
@@ -148,7 +151,7 @@ class AuthTokensIT extends AbstractIntegrationTest {
                 .andExpect(status().isNoContent());
         mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + tokens.access())
                         .contentType(MediaType.APPLICATION_JSON).content(PRODUCT))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         // refresh token was not sent, so it still works
         mockMvc.perform(post("/api/auth/refresh").contentType(MediaType.APPLICATION_JSON)
                         .content(refreshBody(tokens.refresh())))
@@ -157,7 +160,7 @@ class AuthTokensIT extends AbstractIntegrationTest {
 
     @Test
     void logoutRequiresAuthentication() throws Exception {
-        mockMvc.perform(post("/api/auth/logout")).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/auth/logout")).andExpect(status().isUnauthorized());
     }
 
     @Test
