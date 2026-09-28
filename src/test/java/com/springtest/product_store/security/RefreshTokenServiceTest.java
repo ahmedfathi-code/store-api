@@ -36,15 +36,20 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    void issueStoresHashedTokenMappedToEmailWithTtl() {
+    void issueStoresHashedTokenMappedToEmailAndIssueTimeWithTtl() {
         when(redis.opsForValue()).thenReturn(valueOps);
+        long before = System.currentTimeMillis();
 
         String token = service.issue(EMAIL);
 
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
-        verify(valueOps).set(key.capture(), eq(EMAIL), eq(VALIDITY));
+        ArgumentCaptor<String> value = ArgumentCaptor.forClass(String.class);
+        verify(valueOps).set(key.capture(), value.capture(), eq(VALIDITY));
         assertThat(key.getValue()).isEqualTo("refresh:" + TokenHasher.sha256(token));
         assertThat(key.getValue()).doesNotContain(token);
+        RefreshTokenService.Consumed stored = RefreshTokenService.parse(value.getValue());
+        assertThat(stored.email()).isEqualTo(EMAIL);
+        assertThat(stored.issuedAtMillis()).isBetween(before, System.currentTimeMillis());
     }
 
     @Test
@@ -60,11 +65,24 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    void consumeReturnsEmailAndDeletesTokenAtomically() {
+    void consumeReturnsEmailAndIssueTimeAndDeletesTokenAtomically() {
         when(redis.opsForValue()).thenReturn(valueOps);
-        when(valueOps.getAndDelete("refresh:" + TokenHasher.sha256("abc"))).thenReturn(EMAIL);
+        when(valueOps.getAndDelete("refresh:" + TokenHasher.sha256("abc"))).thenReturn(EMAIL + "|1700000000123");
 
-        assertThat(service.consume("abc")).contains(EMAIL);
+        assertThat(service.consume("abc")).contains(new RefreshTokenService.Consumed(EMAIL, 1700000000123L));
+    }
+
+    // Tokens stored before issue times were recorded hold only the email
+    @Test
+    void oldFormatValueIsTreatedAsIssuedAtZero() {
+        assertThat(RefreshTokenService.parse(EMAIL)).isEqualTo(new RefreshTokenService.Consumed(EMAIL, 0L));
+    }
+
+    @Test
+    void emailContainingSeparatorIsParsedInBothFormats() {
+        String odd = "a|b@example.com";
+        assertThat(RefreshTokenService.parse(odd + "|42")).isEqualTo(new RefreshTokenService.Consumed(odd, 42L));
+        assertThat(RefreshTokenService.parse(odd)).isEqualTo(new RefreshTokenService.Consumed(odd, 0L));
     }
 
     @Test

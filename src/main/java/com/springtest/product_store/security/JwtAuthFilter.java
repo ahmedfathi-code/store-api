@@ -32,6 +32,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Autowired
     private JsonErrorWriter jsonErrorWriter;
 
+    @Autowired
+    private SessionRevocationService sessionRevocationService;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -64,6 +67,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // ✅ بنتحقق من الـ Token ونجيب الإيميل منه
         if (!revoked && jwtUtil.isTokenValid(token)) {
             String email = jwtUtil.extractEmail(token);
+
+            // Issued before the user's sessions were revoked (e.g. password change): invalid
+            boolean sessionRevoked;
+            try {
+                sessionRevoked = sessionRevocationService.isRevoked(email, jwtUtil.getIssuedAtMillis(token));
+            } catch (DataAccessException e) {
+                jsonErrorWriter.write(request, response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                        "auth.unavailable");
+                return;
+            }
+            if (sessionRevoked) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             try {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);

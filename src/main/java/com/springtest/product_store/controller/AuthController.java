@@ -12,6 +12,7 @@ import com.springtest.product_store.model.Role;
 import com.springtest.product_store.repository.UserRepository;
 import com.springtest.product_store.security.JwtUtil;
 import com.springtest.product_store.security.RefreshTokenService;
+import com.springtest.product_store.security.SessionRevocationService;
 import com.springtest.product_store.security.TokenBlacklistService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -60,6 +61,9 @@ public class AuthController {
 
     @Autowired
     private MessageSource messageSource;
+
+    @Autowired
+    private SessionRevocationService sessionRevocationService;
 
     // Message in the request's language (Accept-Language: ar -> Arabic, otherwise English)
     private String message(String code) {
@@ -142,15 +146,19 @@ public class AuthController {
     @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<?> refresh(@Valid @RequestBody RefreshRequest request) {
-        Optional<String> email = refreshTokenService.consume(request.getRefreshToken());
+        Optional<RefreshTokenService.Consumed> consumed = refreshTokenService.consume(request.getRefreshToken());
 
-        if (email.isEmpty() || userRepository.findByEmail(email.get()).isEmpty()) {
+        // Unknown/used token, deleted user, or issued before the user's sessions were
+        // revoked (e.g. password change): all the same 401
+        if (consumed.isEmpty()
+                || userRepository.findByEmail(consumed.get().email()).isEmpty()
+                || sessionRevocationService.isRevoked(consumed.get().email(), consumed.get().issuedAtMillis())) {
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", message("auth.refresh.invalid")));
         }
 
-        return ResponseEntity.ok(issueTokens(email.get()));
+        return ResponseEntity.ok(issueTokens(consumed.get().email()));
     }
 
     // Logout: revoke the current access token until it would naturally expire,
