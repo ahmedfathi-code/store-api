@@ -57,8 +57,8 @@ class ErrorHandlingIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void anonymousUnknownPathIsStillForbidden() throws Exception {
+    void anonymousUnknownPathIsUnauthorized() throws Exception {
         // Security runs before routing: unauthenticated callers can't probe which paths exist
-        mockMvc.perform(get("/api/does-not-exist")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/does-not-exist")).andExpect(status().isUnauthorized());
     }
 }
