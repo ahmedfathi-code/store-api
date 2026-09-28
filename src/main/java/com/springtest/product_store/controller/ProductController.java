@@ -40,8 +40,10 @@ public class ProductController {
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = "Invalid body",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    @ApiResponse(responseCode = "403", description = "Missing, invalid or revoked token, or not ADMIN",
-            content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or revoked token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "403", description = "Authenticated, but not ADMIN",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Product> createProduct(@Valid @RequestBody ProductRequest request) {
         Product created = productService.createProduct(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -117,8 +119,10 @@ public class ProductController {
     @ApiResponse(responseCode = "200", description = "Updated")
     @ApiResponse(responseCode = "400", description = "Invalid body or non-numeric id",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    @ApiResponse(responseCode = "403", description = "Missing, invalid or revoked token, or not ADMIN",
-            content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or revoked token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "403", description = "Authenticated, but not ADMIN",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "404", description = "No product with this id",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Product> updateProduct(
@@ -133,8 +137,10 @@ public class ProductController {
     @Operation(summary = "Delete a product (ADMIN)")
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @ApiResponse(responseCode = "204", description = "Deleted", content = @Content)
-    @ApiResponse(responseCode = "403", description = "Missing, invalid or revoked token, or not ADMIN",
-            content = @Content)
+    @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or revoked token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "403", description = "Authenticated, but not ADMIN",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "404", description = "No product with this id",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
