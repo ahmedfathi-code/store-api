@@ -337,8 +337,8 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 | Suite | Tests | What it covers |
 |---|---|---|
 | Unit (Mockito) | 39 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
-| `ProductPaginationIT` | 19 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s and `404` |
-| `ProductSecurityIT` | 16 | USER gets `403` (JSON, no challenge) on writes and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
+| `ProductPaginationIT` | 20 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s (including unsafe `sortBy` values) and `404` |
+| `ProductSecurityIT` | 17 | USER gets `403` (JSON, no challenge) on writes, including unmapped methods, and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
 | `AuthTokensIT` | 10 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, logging out one session leaves another working, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |

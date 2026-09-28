@@ -43,10 +43,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // ✅ GET متاح للكل
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                        // Creating, updating and deleting products is ADMIN-only
-                        .requestMatchers(HttpMethod.POST, "/api/products/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/products/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasRole("ADMIN")
+                        // Everything else on products (POST, PUT, DELETE, and any method added later) is ADMIN-only
+                        .requestMatchers("/api/products/**").hasRole("ADMIN")
                         // ✅ باقي العمليات محتاجة Token
                         .anyRequest().authenticated()
                 )

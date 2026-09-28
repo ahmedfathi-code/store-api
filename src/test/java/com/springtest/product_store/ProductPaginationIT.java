@@ -165,6 +165,20 @@ class ProductPaginationIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Invalid sort property 'foo'"));
     }
 
+    // Only identifier-like values are echoed back; anything else gets a generic message
+    @Test
+    void unsafeSortPropertyIsNotEchoed() throws Exception {
+        String markup = "<script>alert(1)</script>";
+        mockMvc.perform(get("/api/products").param("sortBy", markup))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid sort property"));
+
+        String huge = "a".repeat(2000);
+        mockMvc.perform(get("/api/products").param("sortBy", huge))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid sort property"));
+    }
+
     @Test
     void sizeIsCappedAt100() throws Exception {
         mockMvc.perform(get("/api/products").param("size", "100"))

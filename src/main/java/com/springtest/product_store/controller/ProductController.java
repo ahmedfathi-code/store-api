@@ -25,6 +25,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import static com.springtest.product_store.controller.PagingLimits.*;
+
 @RestController
 @RequestMapping("/api/products")
 @Tag(name = "products", description = "Product catalog: reads are public, writes need an ADMIN token")
@@ -57,13 +59,17 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Page<ProductResponseDto>> getAllProducts(
             @Parameter(description = "Zero-based page number")
-            @RequestParam(defaultValue = "0")    @Min(value = 0, message = "page must be 0 or greater") int page,
+            @RequestParam(defaultValue = "0")    @Min(value = MIN_PAGE, message = PAGE_MESSAGE) int page,
             @Parameter(description = "Page size, 1 to 100")
-            @RequestParam(defaultValue = "10")   @Min(value = 1, message = "size must be 1 or greater")
-            @Max(value = 100, message = "size must be at most 100") int size,
+            @RequestParam(defaultValue = "10")   @Min(value = MIN_SIZE, message = MIN_SIZE_MESSAGE)
+            @Max(value = MAX_SIZE, message = MAX_SIZE_MESSAGE) int size,
             @Parameter(description = "Product field to sort by",
                     schema = @Schema(defaultValue = "id", allowableValues = {"id", "name", "price", "category", "stock"}))
-            @RequestParam(defaultValue = "id")   String sortBy,
+            // Only plain property names reach Spring Data: anything else (spaces, symbols, very
+            // long values) is a 400 here instead of Spring Data's "unsafe sort expression" 500,
+            // and unknown names that do pass are safe to echo in the error message
+            @RequestParam(defaultValue = "id")   @Pattern(regexp = "[A-Za-z_][A-Za-z0-9_.]{0,49}",
+                    message = "Invalid sort property") String sortBy,
             @Parameter(description = "Sort direction, case-insensitive")
             @RequestParam(defaultValue = "asc")  @Pattern(regexp = "asc|desc", flags = Pattern.Flag.CASE_INSENSITIVE,
                     message = "direction must be 'asc' or 'desc'") String direction) {
@@ -90,9 +96,9 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Page<Product>> searchByName(
             @RequestParam String name,
-            @RequestParam(defaultValue = "0")  @Min(value = 0, message = "page must be 0 or greater") int page,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size must be 1 or greater")
-            @Max(value = 100, message = "size must be at most 100") int size) {
+            @RequestParam(defaultValue = "0")  @Min(value = MIN_PAGE, message = PAGE_MESSAGE) int page,
+            @RequestParam(defaultValue = "10") @Min(value = MIN_SIZE, message = MIN_SIZE_MESSAGE)
+            @Max(value = MAX_SIZE, message = MAX_SIZE_MESSAGE) int size) {
 
         return ResponseEntity.ok(productService.searchByName(name, page, size));
     }
@@ -105,9 +111,9 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Page<Product>> searchByCategory(
             @RequestParam String category,
-            @RequestParam(defaultValue = "0")  @Min(value = 0, message = "page must be 0 or greater") int page,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "size must be 1 or greater")
-            @Max(value = 100, message = "size must be at most 100") int size) {
+            @RequestParam(defaultValue = "0")  @Min(value = MIN_PAGE, message = PAGE_MESSAGE) int page,
+            @RequestParam(defaultValue = "10") @Min(value = MIN_SIZE, message = MIN_SIZE_MESSAGE)
+            @Max(value = MAX_SIZE, message = MAX_SIZE_MESSAGE) int size) {
 
         return ResponseEntity.ok(productService.searchByCategory(category, page, size));
     }
