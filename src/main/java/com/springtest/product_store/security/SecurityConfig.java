@@ -34,7 +34,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Logout needs the (valid, not yet revoked) access token being revoked
-                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout", "/api/auth/change-password").authenticated()
                         // ✅ متاح للكل بدون Token
                         .requestMatchers("/api/auth/**").permitAll()
                         // Health check for Docker/load balancers (the only exposed Actuator endpoint)

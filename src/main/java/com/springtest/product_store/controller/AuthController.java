@@ -3,6 +3,7 @@ package com.springtest.product_store.controller;
 
 import com.springtest.product_store.config.OpenApiConfig;
 import com.springtest.product_store.dto.AuthRequest;
+import com.springtest.product_store.dto.ChangePasswordRequest;
 import com.springtest.product_store.dto.ErrorResponse;
 import com.springtest.product_store.dto.RefreshRequest;
 import com.springtest.product_store.dto.RegisterRequest;
@@ -30,9 +31,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 
@@ -66,9 +70,18 @@ public class AuthController {
     private SessionRevocationService sessionRevocationService;
 
     // Message in the request's language (Accept-Language: ar -> Arabic, otherwise English)
-    private String message(String code) {
-        return messageSource.getMessage(code, null, LocaleContextHolder.getLocale());
+    private String message(String code, Object... args) {
+        return messageSource.getMessage(code, args, LocaleContextHolder.getLocale());
     }
+
+    private static ResponseEntity<ErrorResponse> badRequest(String message) {
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse(400, message, LocalDateTime.now().toString()));
+    }
+
+    // New-password minimum by role: USERs as at registration, ADMINs as for the seeded admin
+    static final int USER_MIN_PASSWORD_LENGTH = 6;
+    static final int ADMIN_MIN_PASSWORD_LENGTH = 12;
 
     // ✅ Register
     @PostMapping("/register")
@@ -180,6 +193,46 @@ public class AuthController {
             refreshTokenService.revoke(request.getRefreshToken());
         }
         return ResponseEntity.noContent().build();
+    }
+
+    // Change password: requires the current one, then revokes every existing session
+    // (all access and refresh tokens issued before now) and returns a fresh token pair
+    // so the caller stays logged in.
+    @PostMapping("/change-password")
+    @Operation(summary = "Change your password",
+            description = "Needs the current password. New password: at least 6 characters (USER) or 12 (ADMIN), "
+                    + "and different from the current one. Logs out every other session and returns a new token pair.")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
+    @ApiResponse(responseCode = "200", description = "Password changed; use the new tokens",
+            content = @Content(schema = @Schema(implementation = TokenResponse.class)))
+    @ApiResponse(responseCode = "400", description = "Wrong current password, new password too short, or unchanged",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or revoked token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<?> changePassword(@Parameter(hidden = true) @AuthenticationPrincipal UserDetails principal,
+                                            @Valid @RequestBody ChangePasswordRequest request) {
+        // The filter only authenticates tokens of existing users
+        User user = userRepository.findByEmail(principal.getUsername()).orElseThrow();
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            return badRequest(message("auth.password.currentIncorrect"));
+        }
+        int minLength = user.getRole() == Role.ROLE_ADMIN ? ADMIN_MIN_PASSWORD_LENGTH : USER_MIN_PASSWORD_LENGTH;
+        if (request.getNewPassword().length() < minLength) {
+            // as text: MessageFormat would localise the digits
+            return badRequest(message("auth.password.tooShort", String.valueOf(minLength)));
+        }
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPassword())) {
+            return badRequest(message("auth.password.unchanged"));
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        sessionRevocationService.revokeAllSessions(user.getEmail());
+
+        return ResponseEntity.ok(issueTokens(user.getEmail()));
     }
 
     private TokenResponse issueTokens(String email) {
