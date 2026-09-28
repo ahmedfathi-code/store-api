@@ -291,7 +291,7 @@ curl -i -X POST localhost:8080/api/products -H "Authorization: Bearer $USER_TOKE
 *Trade-off:* every entity change needs a migration.
 
 **Short access tokens, rotating opaque refresh tokens.**
-Access tokens are JWTs that live 15 minutes. Refresh tokens are random 256-bit strings, not JWTs, stored in Redis for 7 days. Each refresh token works once: `GETDEL` makes consuming it atomic.
+Access tokens are JWTs that live 15 minutes, each with a random `jti`, so two sessions that log in within the same second still get different tokens and log out independently. Refresh tokens are random 256-bit strings, not JWTs, stored in Redis for 7 days. Each refresh token works once: `GETDEL` makes consuming it atomic.
 *Why:* a refresh token has to be revocable, which means server-side state anyway, so a signed JWT would add nothing.
 *Trade-off:* clients must refresh every 15 minutes.
 
@@ -336,11 +336,11 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| Unit (Mockito) | 36 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
+| Unit (Mockito) | 39 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 19 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s and `404` |
 | `ProductSecurityIT` | 16 | USER gets `403` (JSON, no challenge) on writes and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
-| `AuthTokensIT` | 9 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, blacklist TTL, only hashes stored |
+| `AuthTokensIT` | 10 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, logging out one session leaves another working, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
 | `OpenApiIT` | 6 | spec and Swagger UI are public; every endpoint listed; bearer scheme; lock on exactly the protected operations; paging limits documented |
@@ -370,7 +370,6 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 
 ## Known limitations and next steps
 
-- **Same-second logins share a token.** Access tokens carry no unique ID (`jti`), so two logins by the same user within one second get identical tokens, and logging out one of them logs out the other. Adding a random `jti` claim fixes it without any client-visible change.
 - **Mixed message languages.** The original messages are Arabic (for example `"تم التسجيل بنجاح"`, "registered successfully"); messages added later are English.
 - **Search endpoints return the entity** (including `stock`) while the list endpoint returns the DTO.
 - **`spring.jpa.show-sql=true`** logs every SQL statement; a production profile should turn it off.
