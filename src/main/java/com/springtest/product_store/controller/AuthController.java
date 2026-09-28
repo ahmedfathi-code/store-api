@@ -42,12 +42,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/auth")
 @Tag(name = "auth", description = "Register, log in, refresh and log out")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired
     private UserRepository userRepository;
@@ -179,19 +182,33 @@ public class AuthController {
     @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<?> refresh(@Valid @RequestBody RefreshRequest request) {
-        Optional<RefreshTokenService.Consumed> consumed = refreshTokenService.consume(request.getRefreshToken());
+        RefreshTokenService.ConsumeResult result = refreshTokenService.consume(request.getRefreshToken());
 
-        // Unknown/used token, deleted user, or issued before the user's sessions were
-        // revoked (e.g. password change): all the same 401
-        if (consumed.isEmpty()
-                || userRepository.findByEmail(consumed.get().email()).isEmpty()
-                || sessionRevocationService.isRevoked(consumed.get().email(), consumed.get().issuedAtMillis())) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", message("auth.refresh.invalid")));
+        // A token that was already used once is being replayed: someone else has it
+        // (theft). Log out every session of the user, including whatever the thief got.
+        // The caller gets the same 401 as for any invalid token.
+        if (result.status() == RefreshTokenService.Status.REUSED) {
+            String email = result.token().email();
+            sessionRevocationService.revokeAllSessions(email);
+            log.warn("Refresh token reuse detected for user {}; all sessions revoked", email);
+            return invalidRefreshToken();
         }
 
-        return ResponseEntity.ok(issueTokens(consumed.get().email()));
+        // Unknown token, deleted user, or issued before the user's sessions were
+        // revoked (e.g. password change): all the same 401
+        if (result.status() == RefreshTokenService.Status.UNKNOWN
+                || userRepository.findByEmail(result.token().email()).isEmpty()
+                || sessionRevocationService.isRevoked(result.token().email(), result.token().issuedAtMillis())) {
+            return invalidRefreshToken();
+        }
+
+        return ResponseEntity.ok(issueTokens(result.token().email()));
+    }
+
+    private ResponseEntity<Map<String, String>> invalidRefreshToken() {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("message", message("auth.refresh.invalid")));
     }
 
     // Logout: revoke the current access token until it would naturally expire,

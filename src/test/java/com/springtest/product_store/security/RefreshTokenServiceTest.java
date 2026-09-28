@@ -8,10 +8,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,12 +67,32 @@ class RefreshTokenServiceTest {
         assertThat(first).hasSize(43).matches("[A-Za-z0-9_-]+");
     }
 
-    @Test
-    void consumeReturnsEmailAndIssueTimeAndDeletesTokenAtomically() {
-        when(redis.opsForValue()).thenReturn(valueOps);
-        when(valueOps.getAndDelete("refresh:" + TokenHasher.sha256("abc"))).thenReturn(EMAIL + "|1700000000123");
+    // The consume script gets the token key and its "used" key, and the refresh lifetime as TTL
+    @SuppressWarnings("unchecked")
+    private void scriptReturns(String token, List<String> result) {
+        String hash = TokenHasher.sha256(token);
+        when(redis.execute(any(RedisScript.class),
+                eq(List.of("refresh:" + hash, "refresh-used:" + hash)),
+                eq(Long.toString(VALIDITY.toMillis()))))
+                .thenReturn(result);
+    }
 
-        assertThat(service.consume("abc")).contains(new RefreshTokenService.Consumed(EMAIL, 1700000000123L));
+    @Test
+    void firstUseIsValidWithOwnerAndIssueTime() {
+        scriptReturns("abc", List.of("VALID", EMAIL + "|1700000000123"));
+
+        assertThat(service.consume("abc")).isEqualTo(new RefreshTokenService.ConsumeResult(
+                RefreshTokenService.Status.VALID, new RefreshTokenService.Consumed(EMAIL, 1700000000123L)));
+    }
+
+    @Test
+    void secondUseIsReportedAsReuseWithTheOwner() {
+        scriptReturns("abc", List.of("REUSED", EMAIL + "|1700000000123"));
+
+        RefreshTokenService.ConsumeResult result = service.consume("abc");
+
+        assertThat(result.status()).isEqualTo(RefreshTokenService.Status.REUSED);
+        assertThat(result.token().email()).isEqualTo(EMAIL);
     }
 
     // Tokens stored before issue times were recorded hold only the email
@@ -86,11 +109,11 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    void consumeReturnsEmptyForUnknownOrAlreadyUsedToken() {
-        when(redis.opsForValue()).thenReturn(valueOps);
-        when(valueOps.getAndDelete("refresh:" + TokenHasher.sha256("used"))).thenReturn(null);
+    void neverIssuedExpiredOrLoggedOutTokenIsUnknown() {
+        scriptReturns("nope", List.of("UNKNOWN", ""));
 
-        assertThat(service.consume("used")).isEmpty();
+        assertThat(service.consume("nope"))
+                .isEqualTo(new RefreshTokenService.ConsumeResult(RefreshTokenService.Status.UNKNOWN, null));
     }
 
     @Test
