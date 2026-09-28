@@ -30,6 +30,6 @@ class HealthEndpointIT extends AbstractIntegrationTest {
 
     @Test
     void otherActuatorEndpointsRequireAuthenticationFirst() throws Exception {
-        mockMvc.perform(get("/actuator/env")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/actuator/env")).andExpect(status().isUnauthorized());
     }
 }
