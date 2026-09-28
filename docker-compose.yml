@@ -1,0 +1,65 @@
+# Run the API with Postgres and Redis:
+#   cp .env.example .env   # then fill in DB_USERNAME, DB_PASSWORD, JWT_SECRET
+#   docker compose up --build
+# API: http://localhost:8080 (APP_PORT to change) · health: /actuator/health
+
+name: store-api
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: product_store_db
+      POSTGRES_USER: ${DB_USERNAME:?Set DB_USERNAME in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (see .env.example)}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # No host port: only the app talks to Postgres, over the compose network
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # No host port and no password: reachable only from the compose network
+
+  app:
+    build: .
+    image: store-api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Explicit environment (not env_file) so .env's localhost values used for
+    # running the app outside Docker don't leak in
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/product_store_db
+      DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME in .env (see .env.example)}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (see .env.example)}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (at least 32 characters) in .env}
+      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-15m}
+      JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-7d}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
