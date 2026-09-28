@@ -11,6 +11,7 @@ import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -86,6 +87,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PropertyReferenceException.class)
     public ResponseEntity<ErrorResponse> handleInvalidSort(PropertyReferenceException ex) {
         return error(400, message("error.invalidSort", ex.getPropertyName()));
+    }
+
+    // Too many failed password attempts
+    @ExceptionHandler(TooManyAttemptsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyAttempts(TooManyAttemptsException ex) {
+        String seconds = String.valueOf(ex.getRetryAfterSeconds());
+        return ResponseEntity.status(429)
+                .header(HttpHeaders.RETRY_AFTER, seconds)
+                .body(new ErrorResponse(429, message("rateLimit.tooManyAttempts", seconds),
+                        LocalDateTime.now().toString()));
     }
 
     // Redis (token store) unreachable or timing out: same 503 as JwtAuthFilter returns
