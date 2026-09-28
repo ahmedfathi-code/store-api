@@ -41,7 +41,7 @@ public class ProductService {
     // Single lookup (and 404 message) for GET, PUT and DELETE by id
     public Product getProductById(Long id) {
         return productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
+                .orElseThrow(() -> ResourceNotFoundException.product(id));
     }
 
     // ✅ Search by Name (Pagination)

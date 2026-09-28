@@ -68,10 +68,10 @@ public class ProductController {
             // long values) is a 400 here instead of Spring Data's "unsafe sort expression" 500,
             // and unknown names that do pass are safe to echo in the error message
             @RequestParam(defaultValue = "id")   @Pattern(regexp = "[A-Za-z_][A-Za-z0-9_.]{0,49}",
-                    message = "Invalid sort property") String sortBy,
+                    message = "{validation.sort}") String sortBy,
             @Parameter(description = "Sort direction, case-insensitive")
             @RequestParam(defaultValue = "asc")  @Pattern(regexp = "asc|desc", flags = Pattern.Flag.CASE_INSENSITIVE,
-                    message = "direction must be 'asc' or 'desc'") String direction) {
+                    message = "{validation.direction}") String direction) {
         return ResponseEntity.ok(productService.getAllProducts(page, size, sortBy, direction));
     }
 

@@ -3,21 +3,22 @@ package com.springtest.product_store.dto;
 import  jakarta.validation.constraints.*;
 import lombok.Data;
 
+// Messages are keys in messages.properties / messages_ar.properties
 @Data
 public class ProductRequest {
-    @NotBlank (message = "اسم المنتج مطلوب ")
-    @Size(min=2 , max = 100 , message = "الاسم لازم يكون بين 2 و 100")
+    @NotBlank (message = "{validation.product.name.required}")
+    @Size(min=2 , max = 100 , message = "{validation.product.name.size}")
     private String name;
 
-    @NotNull (message = "السعر مطلوب ")
-    @Positive (message = " السعر لازم يكون اكبر من صفر ")
+    @NotNull (message = "{validation.product.price.required}")
+    @Positive (message = "{validation.product.price.positive}")
     private Double price;
 
-    @NotBlank(message = " الكاتيجوري مطلوبه")
+    @NotBlank(message = "{validation.product.category.required}")
     private String category;
 
-    @NotNull(message = "الكمية مطلوبة")
-    @Min(value = 0, message = "الكمية مش ممكن تكون سالبة")
+    @NotNull(message = "{validation.product.stock.required}")
+    @Min(value = 0, message = "{validation.product.stock.min}")
     private Integer stock;
 
 

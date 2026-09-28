@@ -28,10 +28,10 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
         if (bearerSent) {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"");
-            jsonErrorWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid, expired or revoked token");
+            jsonErrorWriter.write(request, response, HttpServletResponse.SC_UNAUTHORIZED, "auth.invalidToken");
         } else {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-            jsonErrorWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required");
+            jsonErrorWriter.write(request, response, HttpServletResponse.SC_UNAUTHORIZED, "auth.required");
         }
     }
 }
