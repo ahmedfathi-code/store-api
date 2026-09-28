@@ -9,6 +9,7 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -133,6 +134,35 @@ class PasswordChangeIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"currentPassword\":\"x\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("New password is required"));
+    }
+
+    // Holding a (stolen) access token must not allow unlimited guesses of the current password
+    @Test
+    void wrongCurrentPasswordsAreRateLimited() throws Exception {
+        createUser(USER, Role.ROLE_USER);
+        Tokens session = login(USER, PASSWORD);
+
+        for (int i = 0; i < 5; i++) {
+            changePassword(session.access(), "guess-" + i, NEW_PASSWORD).andExpect(status().isBadRequest());
+        }
+
+        // blocked now, even with the right current password
+        changePassword(session.access(), PASSWORD, NEW_PASSWORD)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+        login(USER, PASSWORD);
+    }
+
+    @Test
+    void onlyWrongCurrentPasswordsCount() throws Exception {
+        createUser(USER, Role.ROLE_USER);
+        Tokens session = login(USER, PASSWORD);
+
+        // current password right, new one invalid: these don't count towards the limit
+        for (int i = 0; i < 6; i++) {
+            changePassword(session.access(), PASSWORD, "123").andExpect(status().isBadRequest());
+        }
+        changePassword(session.access(), PASSWORD, NEW_PASSWORD).andExpect(status().isOk());
     }
 
     @Test
