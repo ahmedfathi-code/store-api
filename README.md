@@ -206,7 +206,7 @@ curl -X POST localhost:8080/api/products \
 # 201 {"id":4,"name":"Desk Lamp","price":24.0,"category":"office","stock":15}
 ```
 
-The same request with a USER's token returns `403`.
+The same request with a USER's token returns `403 {"status":403,"message":"Access denied",...}`. Without a token it returns `401` (see **Errors** below).
 
 **List: page 0, 2 per page, most expensive first**
 
@@ -253,7 +253,7 @@ curl -X POST localhost:8080/api/auth/refresh \
 curl -X POST localhost:8080/api/auth/logout \
   -H "Authorization: Bearer $NEW_TOKEN" -H 'Content-Type: application/json' \
   -d "{\"refreshToken\":\"$NEW_REFRESH\"}"
-# 204, after which $NEW_TOKEN is rejected (403) and $NEW_REFRESH returns 401
+# 204, after which $NEW_TOKEN is rejected (401 invalid_token) and $NEW_REFRESH returns 401
 ```
 
 **Errors**
@@ -266,6 +266,22 @@ curl 'localhost:8080/api/products?size=500'
 
 curl localhost:8080/api/products/999
 # 404 {"status":404,"message":"Product not found with id: 999","timestamp":"2026-09-28T00:14:22.809429402"}
+```
+
+Authentication failures follow RFC 6750: `401` with a `WWW-Authenticate` header when the caller isn't authenticated, and `403` only when an authenticated caller lacks the role.
+
+```bash
+curl -i -X POST localhost:8080/api/products -H 'Content-Type: application/json' -d '{...}'
+# 401  WWW-Authenticate: Bearer
+# {"status":401,"message":"Authentication required","timestamp":"2026-09-28T10:29:12.584318848"}
+
+curl -i -X POST localhost:8080/api/products -H "Authorization: Bearer $REVOKED_OR_BAD_TOKEN" ...
+# 401  WWW-Authenticate: Bearer error="invalid_token"
+# {"status":401,"message":"Invalid, expired or revoked token","timestamp":"2026-09-28T10:29:13.107506412"}
+
+curl -i -X POST localhost:8080/api/products -H "Authorization: Bearer $USER_TOKEN" ...
+# 403
+# {"status":403,"message":"Access denied","timestamp":"2026-09-28T10:29:35.523143309"}
 ```
 
 ## Design decisions
@@ -295,8 +311,9 @@ An account is created from `ADMIN_EMAIL`/`ADMIN_PASSWORD` only when none exists 
 **Role rules live in one place.**
 All access rules are URL rules in `SecurityConfig`, not scattered `@PreAuthorize` annotations. Writes to `/api/products/**` need `ROLE_ADMIN`.
 
-**Existing responses kept stable.**
-Revoked and invalid tokens both get `403`, which is Spring Security's default and what clients already received. Switching unauthenticated responses to `401` would have changed existing behaviour. Contract changes were made only when a milestone required them, and each one was listed in its PR.
+**`401` means "who are you?", `403` means "not allowed".**
+Missing, malformed, forged, expired and revoked tokens all get `401` with an RFC 6750 `WWW-Authenticate: Bearer` challenge (`error="invalid_token"` when a token was sent), so clients know to log in or refresh. `403` is reserved for authenticated users without the required role. Both use the same JSON error body as every other error, written from the security filter chain where `@RestControllerAdvice` can't reach.
+*Trade-off:* this changed the earlier behaviour (a bare `403` for everything). Contract changes like this were made only in a dedicated milestone and listed in its PR.
 
 **Input errors are `400`, not `500`.**
 Bad paging values, unknown sort fields, non-numeric ids and malformed JSON return `400`. The catch-all exception handler passes through Spring MVC's own status codes (`404`, `405`, `415`), and genuinely unexpected errors are logged and returned as `500`.
@@ -321,7 +338,7 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 |---|---|---|
 | Unit (Mockito) | 36 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 19 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s and `404` |
-| `ProductSecurityIT` | 13 | USER gets `403` on writes and nothing changes; ADMIN gets `201`/`200`/`204`; anonymous and invalid tokens; public reads |
+| `ProductSecurityIT` | 16 | USER gets `403` (JSON, no challenge) on writes and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
 | `AuthTokensIT` | 9 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
@@ -353,7 +370,7 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 
 ## Known limitations and next steps
 
-- **`403` instead of `401`** for missing, invalid and revoked tokens. It is Spring Security's default and was kept for compatibility; a custom entry point would make it `401`.
+- **Same-second logins share a token.** Access tokens carry no unique ID (`jti`), so two logins by the same user within one second get identical tokens, and logging out one of them logs out the other. Adding a random `jti` claim fixes it without any client-visible change.
 - **Mixed message languages.** The original messages are Arabic (for example `"تم التسجيل بنجاح"`, "registered successfully"); messages added later are English.
 - **Search endpoints return the entity** (including `stock`) while the list endpoint returns the DTO.
 - **`spring.jpa.show-sql=true`** logs every SQL statement; a production profile should turn it off.
