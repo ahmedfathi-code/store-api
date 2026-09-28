@@ -54,6 +54,28 @@ class JwtUtilTest {
     }
 
     @Test
+    void issuedAtIsAvailableInMilliseconds() {
+        long before = System.currentTimeMillis();
+        String token = jwtUtil.generateToken("user@example.com");
+
+        assertThat(jwtUtil.getIssuedAtMillis(token)).isBetween(before, System.currentTimeMillis());
+    }
+
+    // Tokens issued before the iatMs claim existed fall back to iat (second precision)
+    @Test
+    void issuedAtFallsBackToIatForOlderTokens() {
+        long iatSeconds = System.currentTimeMillis() / 1000;
+        String legacy = Jwts.builder()
+                .setSubject("user@example.com")
+                .setIssuedAt(new java.util.Date(iatSeconds * 1000))
+                .setExpiration(new java.util.Date(iatSeconds * 1000 + 60_000))
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes()))
+                .compact();
+
+        assertThat(jwtUtil.getIssuedAtMillis(legacy)).isEqualTo(iatSeconds * 1000);
+    }
+
+    @Test
     void tokenSignedWithAnotherKeyIsInvalid() {
         JwtUtil other = new JwtUtil();
         ReflectionTestUtils.setField(other, "SECRET", "another-unit-test-secret-key-32-chars-min");
