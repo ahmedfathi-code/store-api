@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Spring Boot store API: JWT auth, ADMIN/USER roles, pagination (page/size/sortBy/direction),
-response DTOs, centralized exception handling, OpenAPI docs.
+response DTOs, centralized exception handling. (No OpenAPI/Swagger yet.)
 
 ## Workflow rules
 
