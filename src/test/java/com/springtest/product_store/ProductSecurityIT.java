@@ -108,11 +108,18 @@ class ProductSecurityIT extends AbstractIntegrationTest {
 
     @Test
     void adminGetsNotFoundForMissingProduct() throws Exception {
+        // Same 404 message whichever verb hits a missing product
+        String message = "Product not found with id: 999999";
+        mockMvc.perform(get("/api/products/{id}", 999_999))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value(message));
         mockMvc.perform(put("/api/products/{id}", 999_999).header("Authorization", bearer(admin))
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value(message));
         mockMvc.perform(delete("/api/products/{id}", 999_999).header("Authorization", bearer(admin)))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value(message));
     }
 
     // Non-numeric ids used to surface as 500
