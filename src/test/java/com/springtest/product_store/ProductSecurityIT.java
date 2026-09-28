@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -62,6 +63,19 @@ class ProductSecurityIT extends AbstractIntegrationTest {
         mockMvc.perform(delete("/api/products/{id}", existing.getId()).header("Authorization", bearer(user)))
                 .andExpect(status().isForbidden());
         assertThat(productRepository.existsById(existing.getId())).isTrue();
+    }
+
+    // Default-deny: any non-GET method on products is ADMIN-only, including ones
+    // without an endpoint yet, so adding e.g. PATCH later can't open writes to USERs
+    @Test
+    void userIsForbiddenForAnyNonGetMethodEvenUnmapped() throws Exception {
+        mockMvc.perform(patch("/api/products/{id}", existing.getId()).header("Authorization", bearer(user))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isForbidden());
+        // an ADMIN passes security and reaches routing, which has no PATCH endpoint
+        mockMvc.perform(patch("/api/products/{id}", existing.getId()).header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isMethodNotAllowed());
     }
 
     // --- ADMIN is allowed ---
