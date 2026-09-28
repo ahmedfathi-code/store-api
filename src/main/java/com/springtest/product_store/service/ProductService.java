@@ -18,13 +18,13 @@ public class ProductService {
     @Autowired
     private ProductRepository productRepository;
 
-    public Product createProduct(ProductRequest request) {
+    public ProductResponseDto createProduct(ProductRequest request) {
         Product product = new Product();
         product.setName(request.getName());
         product.setCategory(request.getCategory());
         product.setPrice(request.getPrice());
         product.setStock(request.getStock());
-        return productRepository.save(product);
+        return toDto(productRepository.save(product));
 
     }
 
@@ -45,25 +45,25 @@ public class ProductService {
     }
 
     // ✅ Search by Name (Pagination)
-    public Page<Product> searchByName(String name, int page, int size) {
+    public Page<ProductResponseDto> searchByName(String name, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return productRepository.findByNameContainingIgnoreCase(name, pageable);
+        return productRepository.findByNameContainingIgnoreCase(name, pageable).map(this::toDto);
     }
 
     // ✅ Search by Category (Pagination)
-    public Page<Product> searchByCategory(String category, int page, int size) {
+    public Page<ProductResponseDto> searchByCategory(String category, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return productRepository.findByCategoryIgnoreCase(category, pageable);
+        return productRepository.findByCategoryIgnoreCase(category, pageable).map(this::toDto);
     }
 
     // ✅ Update
-    public Product updateProduct(Long id, ProductRequest request) {
+    public ProductResponseDto updateProduct(Long id, ProductRequest request) {
         Product product = getProductById(id);
         product.setName(request.getName());
         product.setPrice(request.getPrice());
         product.setCategory(request.getCategory());
         product.setStock(request.getStock());
-        return productRepository.save(product);
+        return toDto(productRepository.save(product));
     }
 
     // ✅ Delete
@@ -78,7 +78,8 @@ public class ProductService {
                 product.getId(),
                 product.getName(),
                 product.getPrice(),
-                product.getCategory()  // أو product.getCategory().getName() لو عندك relation
+                product.getCategory(),  // أو product.getCategory().getName() لو عندك relation
+                product.getStock()
         );
     }
 
