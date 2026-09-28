@@ -33,6 +33,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         // Health check for Docker/load balancers (the only exposed Actuator endpoint)
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        // OpenAPI spec and Swagger UI (can be disabled with OPENAPI_ENABLED=false)
+                        .requestMatchers(HttpMethod.GET, "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // ✅ GET متاح للكل
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         // Creating, updating and deleting products is ADMIN-only
