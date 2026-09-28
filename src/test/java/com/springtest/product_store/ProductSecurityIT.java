@@ -40,7 +40,11 @@ class ProductSecurityIT extends AbstractIntegrationTest {
     void userCannotCreateProduct() throws Exception {
         mockMvc.perform(post("/api/products").header("Authorization", bearer(user))
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                // authenticated, so no auth challenge; just a JSON reason
+                .andExpect(header().doesNotExist("WWW-Authenticate"))
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("Access denied"));
         assertThat(productRepository.count()).isEqualTo(1);
     }
 

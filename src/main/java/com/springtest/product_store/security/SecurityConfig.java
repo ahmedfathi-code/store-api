@@ -23,6 +23,9 @@ public class SecurityConfig {
     @Autowired
     private RestAuthenticationEntryPoint authenticationEntryPoint;
 
+    @Autowired
+    private RestAccessDeniedHandler accessDeniedHandler;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -49,7 +52,8 @@ public class SecurityConfig {
                 )
                 // 401 + WWW-Authenticate when not authenticated; JSON error bodies
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(authenticationEntryPoint))
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
