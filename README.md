@@ -71,7 +71,7 @@ sequenceDiagram
 
 ## Tech stack
 
-Java 21 · Spring Boot 4 (Web MVC, Security, Data JPA, Data Redis, Validation, Actuator) · JJWT · PostgreSQL 16 · Flyway · Redis 7 · JUnit 5, Mockito, Testcontainers · Docker, Docker Compose · GitHub Actions
+Java 21 · Spring Boot 4 (Web MVC, Security, Data JPA, Data Redis, Validation, Actuator) · JJWT · springdoc-openapi (Swagger UI) · PostgreSQL 16 · Flyway · Redis 7 · JUnit 5, Mockito, Testcontainers · Docker, Docker Compose · GitHub Actions
 
 ## How to run
 
@@ -86,6 +86,7 @@ docker compose up --build
 ```
 
 - API: `http://localhost:8080` (change the host port with `APP_PORT`)
+- **Swagger UI: `http://localhost:8080/swagger-ui.html`** (OpenAPI spec at `/v3/api-docs`)
 - Health: `http://localhost:8080/actuator/health`
 
 Compose starts PostgreSQL and Redis first, waits until both are healthy, then starts the app. Flyway creates the schema on first start. Data is kept in the `postgres-data` volume; `docker compose down -v` deletes it. If a required variable is missing, compose stops immediately and names it.
@@ -108,6 +109,7 @@ Requires Java 21 and a running PostgreSQL and Redis. Set the variables below (se
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | no | `localhost`, `6379`, empty | Redis connection (compose sets this itself) |
 | `JWT_ACCESS_TOKEN_EXPIRATION` | no | `15m` | Access-token lifetime |
 | `JWT_REFRESH_TOKEN_EXPIRATION` | no | `7d` | Refresh-token lifetime |
+| `OPENAPI_ENABLED` | no | `true` | Serve the OpenAPI spec and Swagger UI; `false` removes both |
 | `APP_PORT` | no | `8080` | Host port (docker compose only) |
 
 ### Creating an admin
@@ -129,6 +131,8 @@ Then log in again to get a token for the admin account.
 
 ## API
 
+The interactive docs at **`/swagger-ui.html`** list every endpoint with its parameters, limits and responses. To call protected endpoints from there, log in via `POST /api/auth/login`, click **Authorize** and paste the access token. The lock icons mark the operations that need one.
+
 | Method | Path | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | public | Create a USER account |
@@ -143,6 +147,7 @@ Then log in again to get a token for the admin account.
 | `PUT` | `/api/products/{id}` | **ADMIN** | Replace a product |
 | `DELETE` | `/api/products/{id}` | **ADMIN** | Delete a product |
 | `GET` | `/actuator/health` | public | `{"status":"UP"}`, or `DOWN` if the database or Redis is unreachable |
+| `GET` | `/swagger-ui.html`, `/v3/api-docs` | public | Swagger UI and the OpenAPI 3.1 spec (off with `OPENAPI_ENABLED=false`) |
 
 ### Pagination
 
@@ -285,6 +290,10 @@ The multi-stage build caches dependencies in their own layer and splits the jar 
 **Health only, without details.**
 Actuator exposes just `/actuator/health`, publicly and without component details, so compose can wait for a truly ready app without revealing anything about the database or Redis.
 
+**API docs generated from the code.**
+springdoc builds the OpenAPI spec from the controllers, so it can't drift from the implementation. Validation rules appear as limits (`size` 1–100, `direction` `asc|desc`), and a test checks that the lock icons sit on exactly the operations `SecurityConfig` protects. The docs are public by default for this portfolio project.
+*Trade-off:* public docs also map the API's surface for anyone probing it, so a production deployment can turn them off with `OPENAPI_ENABLED=false`.
+
 ## Testing
 
 | Suite | Tests | What it covers |
@@ -295,6 +304,8 @@ Actuator exposes just `/actuator/health`, publicly and without component details
 | `AuthTokensIT` | 9 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
+| `OpenApiIT` | 6 | spec and Swagger UI are public; every endpoint listed; bearer scheme; lock on exactly the protected operations; paging limits documented |
+| `OpenApiDisabledIT` | 1 | with the docs turned off, the spec and UI return `404` |
 | `ProductStoreApplicationIT` | 1 | context starts on a fresh database and Flyway applied V1 |
 
 CI runs `./mvnw verify` on every push and pull request to `main`. A parallel job validates `docker-compose.yml` and builds the image.
@@ -303,6 +314,7 @@ CI runs `./mvnw verify` on every push and pull request to `main`. A parallel job
 
 ```
 src/main/java/com/springtest/product_store/
+├── config/       OpenApiConfig
 ├── controller/   AuthController, ProductController
 ├── dto/          request/response DTOs, ErrorResponse
 ├── entity/       Product, User (JPA)
@@ -319,7 +331,6 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 
 ## Known limitations and next steps
 
-- **No API docs yet.** OpenAPI/Swagger (springdoc) is the next planned addition.
 - **No admin seeding.** Admins are promoted with SQL (see above). A startup seed from environment variables would make first-run setup easier.
 - **`403` instead of `401`** for missing, invalid and revoked tokens. It is Spring Security's default and was kept for compatibility; a custom entry point would make it `401`.
 - **Mixed message languages.** The original messages are Arabic (for example `"تم التسجيل بنجاح"`, "registered successfully"); messages added later are English.
