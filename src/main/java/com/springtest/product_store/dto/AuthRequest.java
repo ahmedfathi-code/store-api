@@ -7,10 +7,10 @@ import lombok.Data;
 @Data
 public class AuthRequest {
 
-    @NotBlank(message = "الإيميل مطلوب")
-    @Email(message = "إيميل مش صحيح")
+    @NotBlank(message = "{validation.email.required}")
+    @Email(message = "{validation.email.invalid}")
     private String email;
 
-    @NotBlank(message = "الباسورد مطلوب")
+    @NotBlank(message = "{validation.password.required}")
     private String password;
 }

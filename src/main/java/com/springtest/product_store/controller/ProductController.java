@@ -6,7 +6,6 @@ import com.springtest.product_store.config.OpenApiConfig;
 import com.springtest.product_store.dto.ErrorResponse;
 import com.springtest.product_store.dto.ProductRequest;
 import com.springtest.product_store.dto.ProductResponseDto;
-import com.springtest.product_store.entity.Product;
 import com.springtest.product_store.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -46,8 +45,8 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "403", description = "Authenticated, but not ADMIN",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public ResponseEntity<Product> createProduct(@Valid @RequestBody ProductRequest request) {
-        Product created = productService.createProduct(request);
+    public ResponseEntity<ProductResponseDto> createProduct(@Valid @RequestBody ProductRequest request) {
+        ProductResponseDto created = productService.createProduct(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -69,10 +68,10 @@ public class ProductController {
             // long values) is a 400 here instead of Spring Data's "unsafe sort expression" 500,
             // and unknown names that do pass are safe to echo in the error message
             @RequestParam(defaultValue = "id")   @Pattern(regexp = "[A-Za-z_][A-Za-z0-9_.]{0,49}",
-                    message = "Invalid sort property") String sortBy,
+                    message = "{validation.sort}") String sortBy,
             @Parameter(description = "Sort direction, case-insensitive")
             @RequestParam(defaultValue = "asc")  @Pattern(regexp = "asc|desc", flags = Pattern.Flag.CASE_INSENSITIVE,
-                    message = "direction must be 'asc' or 'desc'") String direction) {
+                    message = "{validation.direction}") String direction) {
         return ResponseEntity.ok(productService.getAllProducts(page, size, sortBy, direction));
     }
 
@@ -94,7 +93,7 @@ public class ProductController {
     @ApiResponse(responseCode = "200", description = "A page of matching products")
     @ApiResponse(responseCode = "400", description = "Invalid page or size",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public ResponseEntity<Page<Product>> searchByName(
+    public ResponseEntity<Page<ProductResponseDto>> searchByName(
             @RequestParam String name,
             @RequestParam(defaultValue = "0")  @Min(value = MIN_PAGE, message = PAGE_MESSAGE) int page,
             @RequestParam(defaultValue = "10") @Min(value = MIN_SIZE, message = MIN_SIZE_MESSAGE)
@@ -109,7 +108,7 @@ public class ProductController {
     @ApiResponse(responseCode = "200", description = "A page of matching products")
     @ApiResponse(responseCode = "400", description = "Invalid page or size",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public ResponseEntity<Page<Product>> searchByCategory(
+    public ResponseEntity<Page<ProductResponseDto>> searchByCategory(
             @RequestParam String category,
             @RequestParam(defaultValue = "0")  @Min(value = MIN_PAGE, message = PAGE_MESSAGE) int page,
             @RequestParam(defaultValue = "10") @Min(value = MIN_SIZE, message = MIN_SIZE_MESSAGE)
@@ -131,7 +130,7 @@ public class ProductController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "404", description = "No product with this id",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public ResponseEntity<Product> updateProduct(
+    public ResponseEntity<ProductResponseDto> updateProduct(
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request) {
 

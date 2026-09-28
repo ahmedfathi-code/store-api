@@ -1,11 +1,14 @@
 package com.springtest.product_store;
 
+import com.jayway.jsonpath.JsonPath;
 import com.springtest.product_store.entity.Product;
 import com.springtest.product_store.entity.User;
 import com.springtest.product_store.model.Role;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -215,5 +218,36 @@ class ProductSecurityIT extends AbstractIntegrationTest {
     void userCanStillRead() throws Exception {
         mockMvc.perform(get("/api/products").header("Authorization", bearer(user)))
                 .andExpect(status().isOk());
+    }
+
+    // One product shape (ProductResponseDto) from every endpoint
+    @Test
+    void everyProductEndpointReturnsTheSameFields() throws Exception {
+        String[] fields = {"id", "name", "price", "category", "stock"};
+        String id = existing.getId().toString();
+
+        String created = mockMvc.perform(post("/api/products").header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String updated = mockMvc.perform(put("/api/products/{id}", id).header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String byId = mockMvc.perform(get("/api/products/{id}", id))
+                .andReturn().getResponse().getContentAsString();
+        String list = mockMvc.perform(get("/api/products"))
+                .andReturn().getResponse().getContentAsString();
+        String byName = mockMvc.perform(get("/api/products/search/name").param("name", "note"))
+                .andReturn().getResponse().getContentAsString();
+        String byCategory = mockMvc.perform(get("/api/products/search/category").param("category", "office"))
+                .andReturn().getResponse().getContentAsString();
+
+        for (String single : new String[]{created, updated, byId}) {
+            Map<String, Object> json = JsonPath.read(single, "$");
+            assertThat(json).containsOnlyKeys(fields);
+        }
+        for (String page : new String[]{list, byName, byCategory}) {
+            Map<String, Object> first = JsonPath.read(page, "$.content[0]");
+            assertThat(first).containsOnlyKeys(fields);
+        }
     }
 }
