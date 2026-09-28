@@ -158,6 +158,28 @@ class AuthTokensIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    // Two sessions (e.g. phone and laptop) logging in within the same second
+    // must get different tokens, so logging out one doesn't log out the other
+    @Test
+    void loggingOutOneSessionLeavesAnotherSameSecondSessionWorking() throws Exception {
+        createUser("admin@example.com", Role.ROLE_ADMIN);
+        Tokens phone = login("admin@example.com");
+        Tokens laptop = login("admin@example.com");
+        assertThat(laptop.access()).isNotEqualTo(phone.access());
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + phone.access()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + phone.access())
+                        .contentType(MediaType.APPLICATION_JSON).content(PRODUCT))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/products").header("Authorization", "Bearer " + laptop.access())
+                        .contentType(MediaType.APPLICATION_JSON).content(PRODUCT))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + laptop.access()))
+                .andExpect(status().isNoContent());
+    }
+
     @Test
     void logoutRequiresAuthentication() throws Exception {
         mockMvc.perform(post("/api/auth/logout")).andExpect(status().isUnauthorized());
