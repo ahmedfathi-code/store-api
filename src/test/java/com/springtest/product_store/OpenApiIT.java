@@ -48,6 +48,7 @@ class OpenApiIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/products/{id}'].put" + bearer).exists())
                 .andExpect(jsonPath("$.paths['/api/products/{id}'].delete" + bearer).exists())
                 .andExpect(jsonPath("$.paths['/api/auth/logout'].post" + bearer).exists())
+                .andExpect(jsonPath("$.paths['/api/auth/change-password'].post" + bearer).exists())
                 .andExpect(jsonPath("$.security").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/products'].get.security").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/products/{id}'].get.security").doesNotExist())

@@ -157,6 +157,7 @@ The interactive docs at **`/swagger-ui.html`** list every endpoint with its para
 | `POST` | `/api/auth/login` | public | Get an access token and a refresh token |
 | `POST` | `/api/auth/refresh` | public (needs a refresh token) | Exchange a refresh token for a new pair |
 | `POST` | `/api/auth/logout` | authenticated | Revoke the access token, and the refresh token if sent |
+| `POST` | `/api/auth/change-password` | authenticated | Change your password (needs the current one); logs out every other session and returns a new token pair |
 | `GET` | `/api/products` | public | Paginated, sortable list |
 | `GET` | `/api/products/{id}` | public | One product |
 | `GET` | `/api/products/search/name?name=` | public | Paginated, case-insensitive "contains" search |
@@ -308,6 +309,10 @@ Access tokens are JWTs that live 15 minutes, each with a random `jti`, so two se
 *Why:* a refresh token has to be revocable, which means server-side state anyway, so a signed JWT would add nothing.
 *Trade-off:* clients must refresh every 15 minutes.
 
+**A password change logs out every session.**
+Changing a password stores a per-user "valid after" timestamp in Redis. Every access or refresh token issued before it is rejected, so a stolen token stops working as soon as the victim changes their password. The caller gets a fresh token pair in the same response. Tokens carry a millisecond issue time (`iatMs`) for this comparison, because the JWT `iat` is only in seconds. The marker expires with the longest token lifetime (7 days), after which no older token can exist.
+*Trade-off:* one extra Redis `GET` per authenticated request. New passwords must be at least 6 characters for USERs and 12 for ADMINs (the same as registration and the admin seed).
+
 **Logout blacklists the access token until it would expire anyway.**
 The Redis key's TTL is the token's remaining lifetime, so the blacklist cleans itself up and never grows beyond the currently valid tokens. Checking it costs one `EXISTS` per authenticated request.
 
@@ -319,7 +324,7 @@ Requests carrying a token, plus login and refresh, return `503` within 2 seconds
 
 **The admin seed only creates.**
 An account is created from `ADMIN_EMAIL`/`ADMIN_PASSWORD` only when none exists with that email. It never promotes an existing user, because an environment variable shouldn't be able to silently turn someone's account into an admin, and it never overwrites a password someone may have changed on purpose. Misconfiguration stops the app at startup rather than leaving it running without the expected admin.
-*Trade-off:* rotating the admin password isn't done through the env var; it needs a password-change feature (not built yet) or SQL.
+*Trade-off:* the env var can't rotate the admin password; the admin changes it with `POST /api/auth/change-password` like any user.
 
 **Role rules live in one place.**
 All access rules are URL rules in `SecurityConfig`, not scattered `@PreAuthorize` annotations. Writes to `/api/products/**` need `ROLE_ADMIN`.
@@ -355,10 +360,11 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| Unit (Mockito) | 40 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
+| Unit (Mockito) | 48 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, millisecond issue time, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption, stored issue time incl. old format), `SessionRevocationService` (valid-after marker), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 20 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s (including unsafe `sortBy` values) and `404` |
 | `ProductSecurityIT` | 18 | every product endpoint returns the same five fields; USER gets `403` (JSON, no challenge) on writes, including unmapped methods, and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
+| `PasswordChangeIT` | 7 | change revokes every earlier access and refresh token (other devices too) while the returned tokens work; old password refused; wrong current, unchanged and too-short (6 USER / 12 ADMIN) are `400`; `401` without a token; Arabic messages |
 | `AuthTokensIT` | 10 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, logging out one session leaves another working, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
@@ -390,6 +396,6 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 
 ## Known limitations and next steps
 
-- **No password change or reset.** Users (and the seeded admin) can't change their password through the API yet.
+- **No password reset ("forgot password").** Changing a password needs the current one; a reset flow needs email delivery, which the project doesn't have.
 - **No rate limiting on login.** Repeated wrong passwords aren't throttled; a limiter (e.g. per IP and email in Redis) would slow brute-force attempts.
 - **No refresh-token reuse detection.** A reused refresh token is rejected, but the rest of that session's tokens aren't revoked; tracking token families would detect theft.
