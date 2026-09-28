@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.security.Key;
 import java.time.Duration;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class  JwtUtil {
@@ -32,6 +33,9 @@ public class  JwtUtil {
     // ✅ بيعمل Token جديد
     public String generateToken(String email) {
         return Jwts.builder()
+                // Unique ID (jti): without it, two logins in the same second produce identical
+                // tokens, and revoking one (logout blacklist) would revoke the other session too
+                .setId(UUID.randomUUID().toString())
                 .setSubject(email)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION.toMillis()))
