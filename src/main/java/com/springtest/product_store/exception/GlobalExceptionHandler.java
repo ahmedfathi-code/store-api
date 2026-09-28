@@ -3,13 +3,14 @@ package com.springtest.product_store.exception;
 
 
 import com.springtest.product_store.dto.ErrorResponse;
+import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -23,21 +24,36 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
+// Messages come from messages*.properties in the request's language (Accept-Language);
+// validation messages arrive already translated by the validator
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final MessageSource messageSource;
+
+    public GlobalExceptionHandler(MessageSource messageSource) {
+        this.messageSource = messageSource;
+    }
+
+    private String message(String code, Object... args) {
+        return messageSource.getMessage(code, args, LocaleContextHolder.getLocale());
+    }
+
+    private static ResponseEntity<ErrorResponse> error(int status, String message) {
+        return ResponseEntity.status(status)
+                .body(new ErrorResponse(status, message, LocalDateTime.now().toString()));
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
-        return ResponseEntity.status(404)
-                .body(new ErrorResponse(404, ex.getMessage(), LocalDateTime.now().toString()));
+        return error(404, messageSource.getMessage(ex, LocaleContextHolder.getLocale()));
     }
 
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ErrorResponse> handleUnauthorized(UnauthorizedException ex) {
-        return ResponseEntity.status(403)
-                .body(new ErrorResponse(403, ex.getMessage(), LocalDateTime.now().toString()));
+        return error(403, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -47,8 +63,7 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
-        return ResponseEntity.status(400)
-                .body(new ErrorResponse(400, msg, LocalDateTime.now().toString()));
+        return error(400, msg);
     }
 
     // Invalid request params, e.g. page < 0 or size < 1
@@ -58,38 +73,31 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(MessageSourceResolvable::getDefaultMessage)
                 .collect(Collectors.joining(", "));
-        return ResponseEntity.status(400)
-                .body(new ErrorResponse(400, msg, LocalDateTime.now().toString()));
+        return error(400, msg);
     }
 
     // Wrong param type, e.g. page=abc
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        return ResponseEntity.status(400)
-                .body(new ErrorResponse(400, "Invalid value for parameter '" + ex.getName() + "'",
-                        LocalDateTime.now().toString()));
+        return error(400, message("error.invalidParam", ex.getName()));
     }
 
-    // Unknown sort property, e.g. sortBy=foo
+    // Unknown sort property, e.g. sortBy=foo (only plain identifiers get this far)
     @ExceptionHandler(PropertyReferenceException.class)
     public ResponseEntity<ErrorResponse> handleInvalidSort(PropertyReferenceException ex) {
-        return ResponseEntity.status(400)
-                .body(new ErrorResponse(400, "Invalid sort property '" + ex.getPropertyName() + "'",
-                        LocalDateTime.now().toString()));
+        return error(400, message("error.invalidSort", ex.getPropertyName()));
     }
 
     // Redis (token store) unreachable or timing out: same 503 as JwtAuthFilter returns
     @ExceptionHandler({RedisConnectionFailureException.class, QueryTimeoutException.class})
     public ResponseEntity<ErrorResponse> handleTokenStoreUnavailable(RuntimeException ex) {
-        return ResponseEntity.status(503)
-                .body(new ErrorResponse(503, "Authentication service unavailable", LocalDateTime.now().toString()));
+        return error(503, message("auth.unavailable"));
     }
 
     // Malformed or missing JSON body
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
-        return ResponseEntity.status(400)
-                .body(new ErrorResponse(400, "Malformed request body", LocalDateTime.now().toString()));
+        return error(400, message("error.malformedBody"));
     }
 
     @ExceptionHandler(Exception.class)
@@ -98,14 +106,12 @@ public class GlobalExceptionHandler {
         // media type 415, ...) carry their proper status; keep it instead of turning it into 500
         if (ex instanceof org.springframework.web.ErrorResponse springError) {
             HttpStatusCode status = springError.getStatusCode();
-            HttpStatus known = HttpStatus.resolve(status.value());
-            String reason = known != null ? known.getReasonPhrase() : "Request failed";
-            return ResponseEntity.status(status)
-                    .body(new ErrorResponse(status.value(), reason, LocalDateTime.now().toString()));
+            String reason = messageSource.getMessage("error.http." + status.value(), null,
+                    message("error.http.other"), LocaleContextHolder.getLocale());
+            return error(status.value(), reason);
         }
 
         log.error("Unhandled exception", ex);
-        return ResponseEntity.status(500)
-                .body(new ErrorResponse(500, "Something went wrong", LocalDateTime.now().toString()));
+        return error(500, message("error.unexpected"));
     }
 }

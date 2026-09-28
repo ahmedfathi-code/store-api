@@ -112,6 +112,7 @@ Requires Java 21 and a running PostgreSQL and Redis. Set the variables below (se
 | `JWT_REFRESH_TOKEN_EXPIRATION` | no | `7d` | Refresh-token lifetime |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | empty | Create this ADMIN on startup if it doesn't exist (set both; password 12+ characters) |
 | `OPENAPI_ENABLED` | no | `true` | Serve the OpenAPI spec and Swagger UI; `false` removes both |
+| `SHOW_SQL` | no | `false` | Log every SQL statement (local debugging) |
 | `APP_PORT` | no | `8080` | Host port (docker compose only) |
 
 ### Creating an admin
@@ -166,6 +167,17 @@ The interactive docs at **`/swagger-ui.html`** list every endpoint with its para
 | `GET` | `/actuator/health` | public | `{"status":"UP"}`, or `DOWN` if the database or Redis is unreachable |
 | `GET` | `/swagger-ui.html`, `/v3/api-docs` | public | Swagger UI and the OpenAPI 3.1 spec (off with `OPENAPI_ENABLED=false`) |
 
+Every product endpoint returns the same shape: `{"id", "name", "price", "category", "stock"}` (inside `content` for paginated results).
+
+### Languages
+
+Messages are in English by default. Send `Accept-Language: ar` to get them in Arabic; any other language falls back to English.
+
+```bash
+curl -H 'Accept-Language: ar' localhost:8080/api/products/999
+# 404 {"status":404,"message":"المنتج مش موجود بالـ id ده: 999",...}
+```
+
 ### Pagination
 
 `GET /api/products` accepts:
@@ -189,7 +201,8 @@ These are real responses from the Docker stack. Tokens are shortened, and the pa
 curl -X POST localhost:8080/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@example.com","password":"Passw0rd!"}'
-# 201 {"message":"تم التسجيل بنجاح"}   ("registered successfully")
+# 201 {"message":"Registered successfully"}
+# with -H 'Accept-Language: ar':  201 {"message":"تم التسجيل بنجاح"}
 
 curl -X POST localhost:8080/api/auth/login \
   -H 'Content-Type: application/json' \
@@ -217,8 +230,8 @@ curl 'localhost:8080/api/products?page=0&size=2&sortBy=price&direction=desc'
 ```json
 {
   "content": [
-    {"id": 4, "name": "Desk Lamp", "price": 24.0, "category": "office"},
-    {"id": 3, "name": "Coffee Mug", "price": 7.9, "category": "kitchen"}
+    {"id": 4, "name": "Desk Lamp", "price": 24.0, "category": "office", "stock": 15},
+    {"id": 3, "name": "Coffee Mug", "price": 7.9, "category": "kitchen", "stock": 40}
   ],
   "number": 0,
   "size": 2,
@@ -315,6 +328,12 @@ All access rules are URL rules in `SecurityConfig`, not scattered `@PreAuthorize
 Missing, malformed, forged, expired and revoked tokens all get `401` with an RFC 6750 `WWW-Authenticate: Bearer` challenge (`error="invalid_token"` when a token was sent), so clients know to log in or refresh. `403` is reserved for authenticated users without the required role. Both use the same JSON error body as every other error, written from the security filter chain where `@RestControllerAdvice` can't reach.
 *Trade-off:* this changed the earlier behaviour (a bare `403` for everything). Contract changes like this were made only in a dedicated milestone and listed in its PR.
 
+**One product shape, never the entity.**
+Every product endpoint returns `ProductResponseDto`, so the JPA entity is never serialised to clients and a new column can't leak into responses by accident.
+
+**Messages in English or Arabic.**
+All client-facing messages live in `messages.properties` and `messages_ar.properties`, chosen by `Accept-Language`, with English as the fallback and never the server's OS locale. Validation annotations reference keys, and errors raised in the security filter chain resolve the language themselves, because Spring MVC hasn't set it yet at that point. Ids are passed as text so they aren't formatted as `999,999`.
+
 **Input errors are `400`, not `500`.**
 Bad paging values, unknown sort fields, non-numeric ids and malformed JSON return `400`. The catch-all exception handler passes through Spring MVC's own status codes (`404`, `405`, `415`), and genuinely unexpected errors are logged and returned as `500`.
 
@@ -336,15 +355,16 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| Unit (Mockito) | 39 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
+| Unit (Mockito) | 40 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 20 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s (including unsafe `sortBy` values) and `404` |
-| `ProductSecurityIT` | 17 | USER gets `403` (JSON, no challenge) on writes, including unmapped methods, and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
+| `ProductSecurityIT` | 18 | every product endpoint returns the same five fields; USER gets `403` (JSON, no challenge) on writes, including unmapped methods, and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
 | `AuthTokensIT` | 10 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, logging out one session leaves another working, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
 | `OpenApiIT` | 6 | spec and Swagger UI are public; every endpoint listed; bearer scheme; lock on exactly the protected operations; paging limits documented |
 | `OpenApiDisabledIT` | 1 | with the docs turned off, the spec and UI return `404` |
+| `MessagesI18nIT` | 7 | every message source (controllers, validation, handler, security filter) in English and Arabic; unsupported or missing language falls back to English |
 | `ProductStoreApplicationIT` | 1 | context starts on a fresh database and Flyway applied V1 |
 
 CI runs `./mvnw verify` on every push and pull request to `main`. A parallel job validates `docker-compose.yml` and builds the image.
@@ -370,6 +390,6 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 
 ## Known limitations and next steps
 
-- **Mixed message languages.** The original messages are Arabic (for example `"تم التسجيل بنجاح"`, "registered successfully"); messages added later are English.
-- **Search endpoints return the entity** (including `stock`) while the list endpoint returns the DTO.
-- **`spring.jpa.show-sql=true`** logs every SQL statement; a production profile should turn it off.
+- **No password change or reset.** Users (and the seeded admin) can't change their password through the API yet.
+- **No rate limiting on login.** Repeated wrong passwords aren't throttled; a limiter (e.g. per IP and email in Redis) would slow brute-force attempts.
+- **No refresh-token reuse detection.** A reused refresh token is rejected, but the rest of that session's tokens aren't revoked; tracking token families would detect theft.

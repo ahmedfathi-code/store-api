@@ -23,6 +23,8 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -56,22 +58,30 @@ public class AuthController {
     @Autowired
     private RefreshTokenService refreshTokenService;
 
+    @Autowired
+    private MessageSource messageSource;
+
+    // Message in the request's language (Accept-Language: ar -> Arabic, otherwise English)
+    private String message(String code) {
+        return messageSource.getMessage(code, null, LocaleContextHolder.getLocale());
+    }
+
     // ✅ Register
     @PostMapping("/register")
     @Operation(summary = "Register a USER account")
     @ApiResponse(responseCode = "201", description = "Registered",
-            content = @Content(examples = @ExampleObject(value = "{\"message\":\"تم التسجيل بنجاح\"}")))
+            content = @Content(examples = @ExampleObject(value = "{\"message\":\"Registered successfully\"}")))
     @ApiResponse(responseCode = "400", description = "Invalid email or password",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "409", description = "Email already registered",
-            content = @Content(examples = @ExampleObject(value = "{\"message\":\"الإيميل ده مسجل قبل كده\"}")))
+            content = @Content(examples = @ExampleObject(value = "{\"message\":\"This email is already registered\"}")))
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
 
         // نتحقق إن الإيميل مش موجود قبل كده
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             return ResponseEntity
                     .status(HttpStatus.CONFLICT)
-                    .body(Map.of("message", "الإيميل ده مسجل قبل كده"));
+                    .body(Map.of("message", message("auth.register.emailTaken")));
         }
 
         // نعمل الـ User ونحفظه
@@ -84,7 +94,7 @@ public class AuthController {
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(Map.of("message", "تم التسجيل بنجاح"));
+                .body(Map.of("message", message("auth.register.success")));
     }
 
     // ✅ Login
@@ -95,7 +105,7 @@ public class AuthController {
     @ApiResponse(responseCode = "400", description = "Invalid request body",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "401", description = "Wrong email or password",
-            content = @Content(examples = @ExampleObject(value = "{\"message\":\"الإيميل أو الباسورد غلط\"}")))
+            content = @Content(examples = @ExampleObject(value = "{\"message\":\"Wrong email or password\"}")))
     @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<?> login(@Valid @RequestBody AuthRequest request) {
@@ -111,7 +121,7 @@ public class AuthController {
         } catch (BadCredentialsException e) {
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "الإيميل أو الباسورد غلط"));
+                    .body(Map.of("message", message("auth.login.badCredentials")));
         }
 
         // لو صح، نعمل Token ونبعته
@@ -137,7 +147,7 @@ public class AuthController {
         if (email.isEmpty() || userRepository.findByEmail(email.get()).isEmpty()) {
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "Invalid or expired refresh token"));
+                    .body(Map.of("message", message("auth.refresh.invalid")));
         }
 
         return ResponseEntity.ok(issueTokens(email.get()));

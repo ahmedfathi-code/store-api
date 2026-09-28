@@ -56,8 +56,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try {
             revoked = tokenBlacklistService.isBlacklisted(token);
         } catch (DataAccessException e) {
-            jsonErrorWriter.write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
-                    "Authentication service unavailable");
+            jsonErrorWriter.write(request, response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "auth.unavailable");
             return;
         }
 
