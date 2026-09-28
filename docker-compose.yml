@@ -51,6 +51,7 @@ services:
       JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-7d}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
     ports:
       - "${APP_PORT:-8080}:8080"
     healthcheck:
