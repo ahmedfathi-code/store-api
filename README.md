@@ -82,6 +82,7 @@ You only need Docker.
 ```bash
 cp .env.example .env
 # edit .env: set DB_USERNAME, DB_PASSWORD and JWT_SECRET (at least 32 characters)
+# optional: ADMIN_EMAIL and ADMIN_PASSWORD to get an admin account (see "Creating an admin")
 docker compose up --build
 ```
 
@@ -109,18 +110,34 @@ Requires Java 21 and a running PostgreSQL and Redis. Set the variables below (se
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | no | `localhost`, `6379`, empty | Redis connection (compose sets this itself) |
 | `JWT_ACCESS_TOKEN_EXPIRATION` | no | `15m` | Access-token lifetime |
 | `JWT_REFRESH_TOKEN_EXPIRATION` | no | `7d` | Refresh-token lifetime |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | empty | Create this ADMIN on startup if it doesn't exist (set both; password 12+ characters) |
 | `OPENAPI_ENABLED` | no | `true` | Serve the OpenAPI spec and Swagger UI; `false` removes both |
 | `APP_PORT` | no | `8080` | Host port (docker compose only) |
 
 ### Creating an admin
 
-`/api/auth/register` always creates a `ROLE_USER` account. To make a user an admin, update the row directly:
+`/api/auth/register` always creates a `ROLE_USER` account. To get an admin, set both of these in `.env` before starting:
 
 ```bash
-docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "update users set role = '"'"'ROLE_ADMIN'"'"' where email = '"'"'admin@example.com'"'"';"'
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=choose-a-long-password   # at least 12 characters
 ```
 
-Then log in again to get a token for the admin account.
+On startup the app creates that account as `ROLE_ADMIN` if it doesn't exist yet, then you log in with it as usual. The seed only ever creates:
+
+- restarting never duplicates the account;
+- changing `ADMIN_PASSWORD` later does not change an existing admin's password;
+- an email that already belongs to a USER is **not** promoted (a warning is logged).
+
+If only one of the two is set, the email is invalid, or the password is shorter than 12 characters, the app refuses to start and says why.
+
+To promote an existing user instead, update the row directly:
+
+```bash
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "update users set role = '"'"'ROLE_ADMIN'"'"' where email = '"'"'someone@example.com'"'"';"'
+```
+
+Then log in again to get a token with the new role.
 
 ### Running the tests
 
@@ -271,6 +288,10 @@ Keys are `sha256(token)`, so a Redis dump can't be replayed as credentials.
 **Fail closed when Redis is down.**
 Requests carrying a token, plus login and refresh, return `503` within 2 seconds rather than skipping the blacklist check. Skipping it would silently make logged-out tokens valid again. Anonymous reads keep working.
 
+**The admin seed only creates.**
+An account is created from `ADMIN_EMAIL`/`ADMIN_PASSWORD` only when none exists with that email. It never promotes an existing user, because an environment variable shouldn't be able to silently turn someone's account into an admin, and it never overwrites a password someone may have changed on purpose. Misconfiguration stops the app at startup rather than leaving it running without the expected admin.
+*Trade-off:* rotating the admin password isn't done through the env var; it needs a password-change feature (not built yet) or SQL.
+
 **Role rules live in one place.**
 All access rules are URL rules in `SecurityConfig`, not scattered `@PreAuthorize` annotations. Writes to `/api/products/**` need `ROLE_ADMIN`.
 
@@ -298,9 +319,10 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| Unit (Mockito) | 25 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption) |
+| Unit (Mockito) | 36 | `ProductService` (sort and page building, DTO mapping, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 19 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s and `404` |
 | `ProductSecurityIT` | 13 | USER gets `403` on writes and nothing changes; ADMIN gets `201`/`200`/`204`; anonymous and invalid tokens; public reads |
+| `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
 | `AuthTokensIT` | 9 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
@@ -314,7 +336,7 @@ CI runs `./mvnw verify` on every push and pull request to `main`. A parallel job
 
 ```
 src/main/java/com/springtest/product_store/
-├── config/       OpenApiConfig
+├── config/       OpenApiConfig, AdminSeeder
 ├── controller/   AuthController, ProductController
 ├── dto/          request/response DTOs, ErrorResponse
 ├── entity/       Product, User (JPA)
@@ -331,7 +353,6 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 
 ## Known limitations and next steps
 
-- **No admin seeding.** Admins are promoted with SQL (see above). A startup seed from environment variables would make first-run setup easier.
 - **`403` instead of `401`** for missing, invalid and revoked tokens. It is Spring Security's default and was kept for compatibility; a custom entry point would make it `401`.
 - **Mixed message languages.** The original messages are Arabic (for example `"تم التسجيل بنجاح"`, "registered successfully"); messages added later are English.
 - **Search endpoints return the entity** (including `stock`) while the list endpoint returns the DTO.
