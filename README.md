@@ -310,6 +310,10 @@ curl -i -X POST localhost:8080/api/products -H "Authorization: Bearer $USER_TOKE
 
 **Short access tokens, rotating opaque refresh tokens.**
 Access tokens are JWTs that live 15 minutes, each with a random `jti`, so two sessions that log in within the same second still get different tokens and log out independently. Refresh tokens are random 256-bit strings, not JWTs, stored in Redis for 7 days. Each refresh token works once: `GETDEL` makes consuming it atomic.
+
+**A replayed refresh token logs the user out everywhere.**
+A consumed refresh token is remembered (`refresh-used:<hash>`, 7 days), and the delete and the "used" marker happen atomically in one Lua script. If a token that was already used is presented again, someone else must have it: every session of that user is revoked (the thief's freshly issued tokens included), a warning is logged, and the caller gets the same `401` as for any invalid token. The real user logs in again and is back in control. Tokens deleted by logout, or never issued, are just invalid and don't trigger it.
+*Trade-offs:* all of the user's sessions are revoked, not just the one login "family", which reuses the password-change mechanism at no per-request cost. There's no grace period: a client that retries a refresh with the same token (e.g. after a timeout) is treated as a replay. **Clients should retry refresh only with the newest refresh token.**
 *Why:* a refresh token has to be revocable, which means server-side state anyway, so a signed JWT would add nothing.
 *Trade-off:* clients must refresh every 15 minutes.
 
@@ -368,12 +372,13 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| Unit (Mockito) | 56 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, millisecond issue time, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption, stored issue time incl. old format), `SessionRevocationService` (valid-after marker), `LoginAttemptService` (counting, window, block, Retry-After, reset), `AdminSeeder` (create, never promote or overwrite, startup validation) |
+| Unit (Mockito) | 57 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, millisecond issue time, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption with valid/reused/unknown outcomes, stored issue time incl. old format), `SessionRevocationService` (valid-after marker), `LoginAttemptService` (counting, window, block, Retry-After, reset), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 20 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s (including unsafe `sortBy` values) and `404` |
 | `ProductSecurityIT` | 18 | every product endpoint returns the same five fields; USER gets `403` (JSON, no challenge) on writes, including unmapped methods, and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
 | `PasswordChangeIT` | 9 | change revokes every earlier access and refresh token (other devices too) while the returned tokens work; old password refused; wrong current, unchanged and too-short (6 USER / 12 ADMIN) are `400`; wrong current passwords are rate-limited (`429`); `401` without a token; Arabic messages |
 | `RateLimitIT` | 6 | 6th login attempt is `429` even with the right password; `Retry-After` within the window; another IP unaffected; success resets; IP blocked after 30 failures across accounts; Arabic message |
+| `RefreshReuseIT` | 4 | replaying a used refresh token revokes the thief's new tokens and every other session while a fresh login works; logged-out or unknown tokens revoke nothing; the used-marker is hashed with a 7-day TTL |
 | `AuthTokensIT` | 10 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, logging out one session leaves another working, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
@@ -406,4 +411,3 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 ## Known limitations and next steps
 
 - **No password reset ("forgot password").** Changing a password needs the current one; a reset flow needs email delivery, which the project doesn't have.
-- **No refresh-token reuse detection.** A reused refresh token is rejected, but the rest of that session's tokens aren't revoked; tracking token families would detect theft.
