@@ -52,6 +52,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
+      SHOW_SQL: ${SHOW_SQL:-false}
       # Optional: create this ADMIN on startup if it doesn't exist (password: 12+ characters)
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
