@@ -70,6 +70,8 @@ class OpenApiIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/products'].post.responses['403'].description")
                         .value("Authenticated, but not ADMIN"))
                 .andExpect(jsonPath("$.paths['/api/auth/logout'].post.responses['401']").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['429']").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/change-password'].post.responses['429']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/logout'].post.responses['403']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.responses['401']").exists())
                 // logout's Authorization header comes from the bearerAuth scheme, not a parameter

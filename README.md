@@ -113,6 +113,10 @@ Requires Java 21 and a running PostgreSQL and Redis. Set the variables below (se
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | no | empty | Create this ADMIN on startup if it doesn't exist (set both; password 12+ characters) |
 | `OPENAPI_ENABLED` | no | `true` | Serve the OpenAPI spec and Swagger UI; `false` removes both |
 | `SHOW_SQL` | no | `false` | Log every SQL statement (local debugging) |
+| `RATE_LIMIT_WINDOW` | no | `15m` | Window for counting failed password attempts |
+| `RATE_LIMIT_LOGIN_PER_ACCOUNT` | no | `5` | Failed logins allowed per client IP + email per window |
+| `RATE_LIMIT_LOGIN_PER_IP` | no | `30` | Failed logins allowed per client IP (any email) per window |
+| `RATE_LIMIT_CHANGE_PASSWORD` | no | `5` | Wrong current passwords allowed per user per window |
 | `APP_PORT` | no | `8080` | Host port (docker compose only) |
 
 ### Creating an admin
@@ -154,7 +158,7 @@ The interactive docs at **`/swagger-ui.html`** list every endpoint with its para
 | Method | Path | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | public | Create a USER account |
-| `POST` | `/api/auth/login` | public | Get an access token and a refresh token |
+| `POST` | `/api/auth/login` | public | Get an access token and a refresh token (`429` after too many failures) |
 | `POST` | `/api/auth/refresh` | public (needs a refresh token) | Exchange a refresh token for a new pair |
 | `POST` | `/api/auth/logout` | authenticated | Revoke the access token, and the refresh token if sent |
 | `POST` | `/api/auth/change-password` | authenticated | Change your password (needs the current one); logs out every other session and returns a new token pair |
@@ -309,6 +313,10 @@ Access tokens are JWTs that live 15 minutes, each with a random `jti`, so two se
 *Why:* a refresh token has to be revocable, which means server-side state anyway, so a signed JWT would add nothing.
 *Trade-off:* clients must refresh every 15 minutes.
 
+**Failed password attempts are rate-limited.**
+Wrong passwords are counted in fixed 15-minute windows in Redis: 5 per client IP + email and 30 per client IP on login, and 5 per user on change-password. Once a limit is reached the endpoint answers `429` with `Retry-After`, **before** checking the password, so guessing stops even when the next guess would be right. Only failures count, and a success resets that account's counter, so normal users never notice. Keying on IP + email (not the email alone) means an attacker can't lock a victim out from somewhere else. The IP-wide limit catches one machine trying many accounts.
+*Deployment note:* the client IP is the TCP peer address; `X-Forwarded-For` isn't trusted, because anyone can send it to get a fresh counter. Behind Docker's port publishing or a reverse proxy, every client can appear as the same address, which makes the per-IP limit shared. In production, put the app behind a proxy and set `server.forward-headers-strategy` so the real client IP is used.
+
 **A password change logs out every session.**
 Changing a password stores a per-user "valid after" timestamp in Redis. Every access or refresh token issued before it is rejected, so a stolen token stops working as soon as the victim changes their password. The caller gets a fresh token pair in the same response. Tokens carry a millisecond issue time (`iatMs`) for this comparison, because the JWT `iat` is only in seconds. The marker expires with the longest token lifetime (7 days), after which no older token can exist.
 *Trade-off:* one extra Redis `GET` per authenticated request. New passwords must be at least 6 characters for USERs and 12 for ADMINs (the same as registration and the admin seed).
@@ -360,11 +368,12 @@ springdoc builds the OpenAPI spec from the controllers, so it can't drift from t
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| Unit (Mockito) | 48 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, millisecond issue time, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption, stored issue time incl. old format), `SessionRevocationService` (valid-after marker), `AdminSeeder` (create, never promote or overwrite, startup validation) |
+| Unit (Mockito) | 56 | `ProductService` (sort and page building, DTO mapping incl. search, not-found paths), `UserDetailsServiceImpl` (roles to authorities), `JwtUtil` (unique tokens per login, millisecond issue time, round trip, wrong key), `RefreshTokenService` and `TokenBlacklistService` (hashing, TTLs, single-use consumption, stored issue time incl. old format), `SessionRevocationService` (valid-after marker), `LoginAttemptService` (counting, window, block, Retry-After, reset), `AdminSeeder` (create, never promote or overwrite, startup validation) |
 | `ProductPaginationIT` | 20 | defaults, page and size, totals, sorting by price and name in both directions, sorting across pages, search paging, size limit, `400`s (including unsafe `sortBy` values) and `404` |
 | `ProductSecurityIT` | 18 | every product endpoint returns the same five fields; USER gets `403` (JSON, no challenge) on writes, including unmapped methods, and nothing changes; ADMIN gets `201`/`200`/`204`; no token, malformed, forged and deleted-user tokens get `401` with the right `WWW-Authenticate`; public reads |
 | `AdminSeedIT` | 2 | the seeded admin exists after startup, can log in and create products; re-running changes nothing |
-| `PasswordChangeIT` | 7 | change revokes every earlier access and refresh token (other devices too) while the returned tokens work; old password refused; wrong current, unchanged and too-short (6 USER / 12 ADMIN) are `400`; `401` without a token; Arabic messages |
+| `PasswordChangeIT` | 9 | change revokes every earlier access and refresh token (other devices too) while the returned tokens work; old password refused; wrong current, unchanged and too-short (6 USER / 12 ADMIN) are `400`; wrong current passwords are rate-limited (`429`); `401` without a token; Arabic messages |
+| `RateLimitIT` | 6 | 6th login attempt is `429` even with the right password; `Retry-After` within the window; another IP unaffected; success resets; IP blocked after 30 failures across accounts; Arabic message |
 | `AuthTokensIT` | 10 | register, login, refresh rotation, reuse rejected, logout revokes both tokens, logging out one session leaves another working, blacklist TTL, only hashes stored |
 | `ErrorHandlingIT` | 5 | `404`, `405`, `415`, malformed JSON gives `400` |
 | `HealthEndpointIT` | 3 | public `UP` without details; other Actuator endpoints not exposed |
@@ -397,5 +406,4 @@ Dockerfile · docker-compose.yml · .github/workflows/ci.yml
 ## Known limitations and next steps
 
 - **No password reset ("forgot password").** Changing a password needs the current one; a reset flow needs email delivery, which the project doesn't have.
-- **No rate limiting on login.** Repeated wrong passwords aren't throttled; a limiter (e.g. per IP and email in Redis) would slow brute-force attempts.
 - **No refresh-token reuse detection.** A reused refresh token is rejected, but the rest of that session's tokens aren't revoked; tracking token families would detect theft.

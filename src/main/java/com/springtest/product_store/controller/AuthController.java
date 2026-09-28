@@ -12,6 +12,7 @@ import com.springtest.product_store.entity.User;
 import com.springtest.product_store.model.Role;
 import com.springtest.product_store.repository.UserRepository;
 import com.springtest.product_store.security.JwtUtil;
+import com.springtest.product_store.security.LoginAttemptService;
 import com.springtest.product_store.security.RefreshTokenService;
 import com.springtest.product_store.security.SessionRevocationService;
 import com.springtest.product_store.security.TokenBlacklistService;
@@ -36,7 +37,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -68,6 +72,9 @@ public class AuthController {
 
     @Autowired
     private SessionRevocationService sessionRevocationService;
+
+    @Autowired
+    private LoginAttemptService loginAttemptService;
 
     // Message in the request's language (Accept-Language: ar -> Arabic, otherwise English)
     private String message(String code, Object... args) {
@@ -123,9 +130,18 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "401", description = "Wrong email or password",
             content = @Content(examples = @ExampleObject(value = "{\"message\":\"Wrong email or password\"}")))
+    @ApiResponse(responseCode = "429", description = "Too many failed attempts (5 per IP+email or 30 per IP "
+            + "in 15 minutes by default); see the Retry-After header",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public ResponseEntity<?> login(@Valid @RequestBody AuthRequest request) {
+    public ResponseEntity<?> login(@Valid @RequestBody AuthRequest request, HttpServletRequest httpRequest) {
+
+        // Too many recent failures for this IP+email or this IP: 429 before checking the
+        // password, so guessing stops even if the next guess would be right
+        List<LoginAttemptService.Limit> limits =
+                loginAttemptService.loginLimits(httpRequest.getRemoteAddr(), request.getEmail());
+        loginAttemptService.checkAllowed(limits);
 
         try {
             // Spring بيتحقق من الإيميل والباسورد تلقائياً
@@ -136,10 +152,14 @@ public class AuthController {
                     )
             );
         } catch (BadCredentialsException e) {
+            loginAttemptService.recordFailure(limits);
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", message("auth.login.badCredentials")));
         }
+
+        // success: this account's failure count starts over (the IP-wide one keeps running)
+        loginAttemptService.reset(limits.get(0));
 
         // لو صح، نعمل Token ونبعته
         return ResponseEntity.ok(issueTokens(request.getEmail()));
@@ -209,6 +229,9 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "401", description = "Missing, invalid, expired or revoked token",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "429", description = "Too many wrong current passwords (5 in 15 minutes by default); "
+            + "see the Retry-After header",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "503", description = "Token store (Redis) unavailable",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<?> changePassword(@Parameter(hidden = true) @AuthenticationPrincipal UserDetails principal,
@@ -216,9 +239,15 @@ public class AuthController {
         // The filter only authenticates tokens of existing users
         User user = userRepository.findByEmail(principal.getUsername()).orElseThrow();
 
+        // A stolen access token must not become a way to guess the current password
+        List<LoginAttemptService.Limit> limits = loginAttemptService.changePasswordLimits(user.getEmail());
+        loginAttemptService.checkAllowed(limits);
+
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            loginAttemptService.recordFailure(limits);
             return badRequest(message("auth.password.currentIncorrect"));
         }
+        loginAttemptService.reset(limits.get(0));
         int minLength = user.getRole() == Role.ROLE_ADMIN ? ADMIN_MIN_PASSWORD_LENGTH : USER_MIN_PASSWORD_LENGTH;
         if (request.getNewPassword().length() < minLength) {
             // as text: MessageFormat would localise the digits
